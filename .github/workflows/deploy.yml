@@ -1,0 +1,47 @@
+name: Deploy Infrastructure and Website
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+    
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: 1.5.0
+    
+    - name: Terraform Init
+      run: terraform init
+    
+    - name: Terraform Plan
+      run: terraform plan
+    
+    - name: Terraform Apply
+      run: terraform apply -auto-approve
+    
+    - name: Deploy Website
+      run: |
+        BUCKET_NAME=$(terraform output -raw s3_bucket_name)
+        aws s3 sync website/ s3://$BUCKET_NAME/ --delete
+        aws s3 cp s3://$BUCKET_NAME/ s3://$BUCKET_NAME/ --recursive --metadata-directive REPLACE --content-type "text/html" --exclude "*" --include "*.html"
+        aws s3 cp s3://$BUCKET_NAME/ s3://$BUCKET_NAME/ --recursive --metadata-directive REPLACE --content-type "text/css" --exclude "*" --include "*.css"
+        aws s3 cp s3://$BUCKET_NAME/ s3://$BUCKET_NAME/ --recursive --metadata-directive REPLACE --content-type "application/javascript" --exclude "*" --include "*.js"
+    
+    - name: Output URLs
+      run: |
+        echo "Website URL: $(terraform output -raw website_url)"
+        echo "ALB URL: http://$(terraform output -raw alb_dns_name)"

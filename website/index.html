@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Company Registration Portal</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Company Registration Portal</h1>
+            <nav>
+                <a href="index.html">Register</a>
+                <a href="status.html">Check Status</a>
+                <a href="admin/login.html">Admin</a>
+            </nav>
+        </header>
+
+        <main>
+            <div class="form-container">
+                <h2>Register Your Company</h2>
+                <form id="registrationForm">
+                    <div class="form-group">
+                        <label for="companyName">Company Name *</label>
+                        <input type="text" id="companyName" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="registrationNumber">Registration Number *</label>
+                        <input type="text" id="registrationNumber" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="businessType">Business Type *</label>
+                        <select id="businessType" required>
+                            <option value="">Select Type</option>
+                            <option value="LLC">Limited Liability Company</option>
+                            <option value="Corp">Corporation</option>
+                            <option value="Partnership">Partnership</option>
+                            <option value="Sole">Sole Proprietorship</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="address">Business Address *</label>
+                        <textarea id="address" required></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="contactPerson">Contact Person *</label>
+                        <input type="text" id="contactPerson" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="email">Email *</label>
+                        <input type="email" id="email" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="phone">Phone Number *</label>
+                        <input type="tel" id="phone" required>
+                    </div>
+
+                    <button type="submit">Submit Registration</button>
+                </form>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registration Status - Company Portal</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Company Registration Portal</h1>
+            <nav>
+                <a href="index.html">Register</a>
+                <a href="status.html">Check Status</a>
+                <a href="admin/login.html">Admin</a>
+            </nav>
+        </header>
+
+        <main>
+            <div class="form-container">
+                <h2>Check Registration Status</h2>
+                <form id="statusForm">
+                    <div class="form-group">
+                        <label for="searchRegNumber">Registration Number</label>
+                        <input type="text" id="searchRegNumber" required>
+                    </div>
+                    <button type="submit">Check Status</button>
+                </form>
+
+                <div id="statusResult" class="status-result" style="display: none;">
+                    <div class="status-card">
+                        <h3 id="statusCompanyName"></h3>
+                        <p><strong>Registration Number:</strong> <span id="statusRegNumber"></span></p>
+                        <p><strong>Status:</strong> <span id="statusValue" class="status-badge"></span></p>
+                        <p><strong>Submitted:</strong> <span id="statusDate"></span></p>
+                        <div id="certificateDownload" style="display: none;">
+                            <button id="downloadCert" class="download-btn">Download Certificate</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/status.js"></script>
+</body>
+</html>
