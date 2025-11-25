@@ -1,18 +1,22 @@
 # Data sources
-data "aws_ami" "amazon_linux" {
+data "aws_ami" "ubuntu" {
   most_recent = true
-  owners      = ["amazon"]
+  owners      = ["099720109477"] # Canonical
 
   filter {
     name   = "name"
-    values = ["amzn2-ami-hvm-*-x86_64-gp2"]
+    values = ["ubuntu/images/hvm-ssd/ubuntu-*-amd64-server-*"]
+  }
+
+  filter {
+    name   = "state"
+    values = ["available"]
   }
 }
 
-# Key Pair
-resource "aws_key_pair" "main" {
-  key_name   = "${var.project_name}-${var.environment}-key"
-  public_key = file("~/.ssh/id_rsa.pub")  # Update path as needed
+# Use existing key pair
+data "aws_key_pair" "main" {
+  key_name = "argo-key-pair"
 }
 
 # Application Load Balancer
@@ -69,18 +73,18 @@ resource "aws_lb_listener" "main" {
 # Launch Template
 resource "aws_launch_template" "main" {
   name_prefix   = "${var.project_name}-${var.environment}-"
-  image_id      = data.aws_ami.amazon_linux.id
+  image_id      = data.aws_ami.ubuntu.id
   instance_type = "t3.micro"
-  key_name      = aws_key_pair.main.key_name
+  key_name      = data.aws_key_pair.main.key_name
 
   vpc_security_group_ids = [var.ec2_security_group]
 
   user_data = base64encode(<<-EOF
               #!/bin/bash
-              yum update -y
-              yum install -y httpd
-              systemctl start httpd
-              systemctl enable httpd
+              apt update -y
+              apt install -y apache2
+              systemctl start apache2
+              systemctl enable apache2
               echo "<h1>Secure Application Server</h1>" > /var/www/html/index.html
               EOF
   )
@@ -117,9 +121,9 @@ resource "aws_autoscaling_group" "main" {
 
 # Bastion Host
 resource "aws_instance" "bastion" {
-  ami                    = data.aws_ami.amazon_linux.id
+  ami                    = data.aws_ami.ubuntu.id
   instance_type          = "t3.micro"
-  key_name               = aws_key_pair.main.key_name
+  key_name               = data.aws_key_pair.main.key_name
   subnet_id              = var.public_subnet_ids[0]
   vpc_security_group_ids = [var.bastion_security_group]
 
