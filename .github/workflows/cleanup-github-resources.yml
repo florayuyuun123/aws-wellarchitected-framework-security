@@ -1,0 +1,64 @@
+name: Cleanup GitHub Actions Resources
+
+on:
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+    
+    - name: Delete GitHub Actions Resources
+      run: |
+        echo "Terminating Bastion Host..."
+        aws ec2 terminate-instances --instance-ids i-0d9ca0ab8c14ec561 || true
+        
+        echo "Deleting Launch Template..."
+        aws ec2 delete-launch-template --launch-template-id lt-069366eecf40ef847 || true
+        
+        echo "Deleting VPC Endpoints..."
+        aws ec2 delete-vpc-endpoint --vpc-endpoint-id vpce-0e6a4e1fad4a04c10 || true
+        aws ec2 delete-vpc-endpoint --vpc-endpoint-id vpce-0adb3d1fcd2526cd6 || true
+        aws ec2 delete-vpc-endpoint --vpc-endpoint-id vpce-05ef7b01099847638 || true
+        
+        echo "Waiting for resources to delete..."
+        sleep 60
+        
+        echo "Deleting Security Groups..."
+        aws ec2 delete-security-group --group-id sg-0d3083ae96726db89 || true
+        aws ec2 delete-security-group --group-id sg-0c83e0fac639ad18f || true
+        aws ec2 delete-security-group --group-id sg-0a03e669648deef86 || true
+        aws ec2 delete-security-group --group-id sg-03237147d940c1a9f || true
+        aws ec2 delete-security-group --group-id sg-09b7203e82277abe1 || true
+        
+        echo "Disassociating Route Tables..."
+        aws ec2 disassociate-route-table --association-id rtbassoc-07cb3d0136bbdcfdc || true
+        aws ec2 disassociate-route-table --association-id rtbassoc-0d6d92e0a8f24ffbe || true
+        aws ec2 disassociate-route-table --association-id rtbassoc-017424d708b606e75 || true
+        aws ec2 disassociate-route-table --association-id rtbassoc-05bedd2822478baa4 || true
+        
+        echo "Deleting Route Tables..."
+        aws ec2 delete-route-table --route-table-id rtb-06c6a851caf41872c || true
+        aws ec2 delete-route-table --route-table-id rtb-0de6b89a5d2c0d020 || true
+        
+        echo "Deleting Subnets..."
+        aws ec2 delete-subnet --subnet-id subnet-0fa192d324fd16e3d || true
+        aws ec2 delete-subnet --subnet-id subnet-02fb47481bf98e924 || true
+        aws ec2 delete-subnet --subnet-id subnet-07322a4fe4cd1d1da || true
+        aws ec2 delete-subnet --subnet-id subnet-0a049eb7e221bd695 || true
+        
+        echo "Detaching and Deleting Internet Gateway..."
+        aws ec2 detach-internet-gateway --internet-gateway-id igw-004d50d3ea7f9af6e --vpc-id vpc-0322638fcf2e6f4d7 || true
+        aws ec2 delete-internet-gateway --internet-gateway-id igw-004d50d3ea7f9af6e || true
+        
+        echo "Deleting VPC..."
+        aws ec2 delete-vpc --vpc-id vpc-0322638fcf2e6f4d7 || true
+        
+        echo "Cleanup complete!"

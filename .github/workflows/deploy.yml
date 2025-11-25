@@ -21,15 +21,9 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: us-east-1
     
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v3
-      with:
-        terraform_version: 1.5.0
-    
-    - name: Get S3 Bucket Name
+    - name: Set S3 Bucket Name
       run: |
-        terraform init
-        echo "BUCKET_NAME=$(terraform output -raw s3_bucket_name)" >> $GITHUB_ENV
+        echo "BUCKET_NAME=secure-app-prod-590184076844" >> $GITHUB_ENV
     
     - name: Deploy Website
       run: |
