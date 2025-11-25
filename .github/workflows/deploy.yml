@@ -1,8 +1,10 @@
-name: Deploy Infrastructure and Website
+name: Deploy Website
 
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'website/**'
   workflow_dispatch:
 
 jobs:
@@ -24,24 +26,15 @@ jobs:
       with:
         terraform_version: 1.5.0
     
-    - name: Terraform Init
-      run: terraform init
-    
-    - name: Terraform Plan
-      run: terraform plan
-    
-    - name: Terraform Apply
-      run: terraform apply -auto-approve
+    - name: Get S3 Bucket Name
+      run: |
+        terraform init
+        echo "BUCKET_NAME=$(terraform output -raw s3_bucket_name)" >> $GITHUB_ENV
     
     - name: Deploy Website
       run: |
-        BUCKET_NAME=$(terraform output -raw s3_bucket_name)
         aws s3 sync website/ s3://$BUCKET_NAME/ --delete
         aws s3 cp s3://$BUCKET_NAME/ s3://$BUCKET_NAME/ --recursive --metadata-directive REPLACE --content-type "text/html" --exclude "*" --include "*.html"
         aws s3 cp s3://$BUCKET_NAME/ s3://$BUCKET_NAME/ --recursive --metadata-directive REPLACE --content-type "text/css" --exclude "*" --include "*.css"
         aws s3 cp s3://$BUCKET_NAME/ s3://$BUCKET_NAME/ --recursive --metadata-directive REPLACE --content-type "application/javascript" --exclude "*" --include "*.js"
-    
-    - name: Output URLs
-      run: |
-        echo "Website URL: $(terraform output -raw website_url)"
-        echo "ALB URL: http://$(terraform output -raw alb_dns_name)"
+        echo "Website deployed to: http://$BUCKET_NAME.s3-website-us-east-1.amazonaws.com"
