@@ -28,7 +28,7 @@ jobs:
         echo "ECR_REPO=$ECR_REPO" >> $GITHUB_ENV
         
         # Auto-discover ECS cluster
-        CLUSTER_NAME=$(aws ecs list-clusters --query "clusterArns[?contains(@, 'cluster')][0]" --output text | cut -d'/' -f2)
+        CLUSTER_NAME=$(aws ecs list-clusters --query "clusterArns[0]" --output text | cut -d'/' -f2)
         echo "CLUSTER_NAME=$CLUSTER_NAME" >> $GITHUB_ENV
         
         echo "Found ECR Repository: $ECR_REPO"
@@ -80,7 +80,7 @@ jobs:
     - name: Update ECS Service
       run: |
         # Auto-discover service name
-        SERVICE_NAME=$(aws ecs list-services --cluster $CLUSTER_NAME --query "serviceArns[?contains(@, 'service')][0]" --output text | cut -d'/' -f3)
+        SERVICE_NAME=$(aws ecs list-services --cluster $CLUSTER_NAME --query "serviceArns[0]" --output text | cut -d'/' -f3)
         
         echo "Updating ECS service: $SERVICE_NAME"
         
@@ -95,7 +95,7 @@ jobs:
     
     - name: Wait for Deployment
       run: |
-        SERVICE_NAME=$(aws ecs list-services --cluster $CLUSTER_NAME --query "serviceArns[?contains(@, 'service')][0]" --output text | cut -d'/' -f3)
+        SERVICE_NAME=$(aws ecs list-services --cluster $CLUSTER_NAME --query "serviceArns[0]" --output text | cut -d'/' -f3)
         
         echo "Waiting for deployment to stabilize..."
         aws ecs wait services-stable --cluster $CLUSTER_NAME --services $SERVICE_NAME --cli-read-timeout 600
