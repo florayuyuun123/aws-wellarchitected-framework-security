@@ -12,3 +12,8 @@ output "bastion_public_ip" {
   description = "Bastion host public IP"
   value       = aws_instance.bastion.public_ip
 }
+
+output "target_group_arn" {
+  description = "ALB Target Group ARN"
+  value       = aws_lb_target_group.main.arn
+}

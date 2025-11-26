@@ -72,7 +72,7 @@ resource "aws_lb_listener" "main" {
 
 # Launch Template
 resource "aws_launch_template" "main" {
-  name_prefix   = "${var.project_name}-${var.environment}-"
+  name_prefix   = "${var.project_name}-${var.environment}-${formatdate("YYYYMMDD-hhmm", timestamp())}-"
   image_id      = data.aws_ami.ubuntu.id
   instance_type = "t3.micro"
   key_name      = data.aws_key_pair.main.key_name
@@ -85,7 +85,36 @@ resource "aws_launch_template" "main" {
               apt install -y apache2
               systemctl start apache2
               systemctl enable apache2
-              echo "<h1>Secure Application Server</h1>" > /var/www/html/index.html
+              
+              # Create simple API endpoints
+              cat > /var/www/html/index.html << 'HTMLEOF'
+<!DOCTYPE html>
+<html>
+<head><title>Company Registration API</title></head>
+<body>
+<h1>Company Registration API</h1>
+<p>Status: Running</p>
+<p>Endpoints:</p>
+<ul>
+<li><a href="/health">/health</a> - Health check</li>
+<li>/api/companies - Company registration</li>
+</ul>
+</body>
+</html>
+HTMLEOF
+              
+              # Create health endpoint
+              mkdir -p /var/www/html/health
+              cat > /var/www/html/health/index.html << 'HEALTHEOF'
+{
+  "status": "healthy",
+  "timestamp": "$(date -Iseconds)",
+  "message": "Company Registration API is running"
+}
+HEALTHEOF
+              
+              # Restart Apache
+              systemctl restart apache2
               EOF
   )
 
@@ -103,6 +132,7 @@ resource "aws_autoscaling_group" "main" {
   vpc_zone_identifier = var.private_subnet_ids
   target_group_arns   = [aws_lb_target_group.main.arn]
   health_check_type   = "ELB"
+  health_check_grace_period = 300
   min_size            = 1
   max_size            = 3
   desired_capacity    = 2
@@ -110,6 +140,13 @@ resource "aws_autoscaling_group" "main" {
   launch_template {
     id      = aws_launch_template.main.id
     version = "$Latest"
+  }
+
+  instance_refresh {
+    strategy = "Rolling"
+    preferences {
+      min_healthy_percentage = 50
+    }
   }
 
   tag {

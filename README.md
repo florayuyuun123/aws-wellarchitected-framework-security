@@ -34,9 +34,8 @@ This project deploys a secure, well-architected AWS infrastructure using Terrafo
    cd aws-wellarchitected-framwork
    ```
 
-2. **Copy and customize variables**:
+2. **Customize variables**:
    ```bash
-   cp terraform.tfvars.example terraform.tfvars
    # Edit terraform.tfvars with your values
    ```
 

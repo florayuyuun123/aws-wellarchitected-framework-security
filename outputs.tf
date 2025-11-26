@@ -28,3 +28,8 @@ output "website_url" {
   description = "Company registration website URL"
   value       = "http://${module.storage.website_url}"
 }
+
+output "target_group_arn" {
+  description = "ALB Target Group ARN"
+  value       = module.compute.target_group_arn
+}

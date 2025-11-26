@@ -23,10 +23,12 @@ data "aws_caller_identity" "current" {}
 module "vpc" {
   source = "./modules/vpc"
   
-  project_name = var.project_name
-  environment  = var.environment
-  vpc_cidr     = var.vpc_cidr
-  azs          = data.aws_availability_zones.available.names
+  project_name         = var.project_name
+  environment          = var.environment
+  vpc_cidr             = var.vpc_cidr
+  azs                  = length(var.availability_zones) > 0 ? var.availability_zones : slice(data.aws_availability_zones.available.names, 0, length(var.public_subnet_cidrs))
+  public_subnet_cidrs  = var.public_subnet_cidrs
+  private_subnet_cidrs = var.private_subnet_cidrs
 }
 
 module "security" {
@@ -49,6 +51,7 @@ module "compute" {
   alb_security_group  = module.security.alb_security_group_id
   ec2_security_group  = module.security.ec2_security_group_id
   bastion_security_group = module.security.bastion_security_group_id
+  rds_endpoint        = module.database.rds_endpoint
 }
 
 module "database" {

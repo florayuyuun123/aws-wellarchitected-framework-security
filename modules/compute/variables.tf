@@ -37,3 +37,8 @@ variable "bastion_security_group" {
   description = "Bastion security group ID"
   type        = string
 }
+
+variable "rds_endpoint" {
+  description = "RDS endpoint for database connection"
+  type        = string
+}

@@ -1,6 +1,7 @@
 # S3 Bucket
 resource "aws_s3_bucket" "main" {
-  bucket = "${var.project_name}-${var.environment}-${var.account_id}"
+  bucket        = "${var.project_name}-${var.environment}-${var.account_id}"
+  force_destroy = true
 
   tags = {
     Name = "${var.project_name}-${var.environment}-bucket"

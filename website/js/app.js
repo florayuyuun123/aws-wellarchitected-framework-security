@@ -1,7 +1,6 @@
 // Company Registration App
 class CompanyRegistry {
     constructor() {
-        this.companies = JSON.parse(localStorage.getItem('companies') || '[]');
         this.init();
     }
 
@@ -16,7 +15,7 @@ class CompanyRegistry {
         return 'REG-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5).toUpperCase();
     }
 
-    handleRegistration(e) {
+    async handleRegistration(e) {
         e.preventDefault();
         
         const formData = {
@@ -28,22 +27,44 @@ class CompanyRegistry {
             contactPerson: document.getElementById('contactPerson').value,
             email: document.getElementById('email').value,
             phone: document.getElementById('phone').value,
-            status: 'pending',
-            submittedDate: new Date().toISOString(),
-            approvedDate: null
+            submittedDate: new Date().toISOString()
         };
 
-        // Check if registration number already exists
-        if (this.companies.find(c => c.registrationNumber === formData.registrationNumber)) {
-            alert('Registration number already exists!');
-            return;
-        }
+        try {
+            const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.REGISTER}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(formData)
+            });
 
-        this.companies.push(formData);
-        localStorage.setItem('companies', JSON.stringify(this.companies));
-        
-        alert(`Registration submitted successfully! Your reference ID is: ${formData.id}`);
-        document.getElementById('registrationForm').reset();
+            const result = await response.json();
+            
+            if (result.success) {
+                alert(`Registration submitted successfully! Your reference ID is: ${formData.id}`);
+                document.getElementById('registrationForm').reset();
+            } else {
+                alert(`Error: ${result.error}`);
+            }
+        } catch (error) {
+            // Fallback to localStorage if API is not available
+            console.warn('API not available, using localStorage fallback');
+            const companies = JSON.parse(localStorage.getItem('companies') || '[]');
+            
+            if (companies.find(c => c.registrationNumber === formData.registrationNumber)) {
+                alert('Registration number already exists!');
+                return;
+            }
+            
+            formData.status = 'pending';
+            formData.approvedDate = null;
+            companies.push(formData);
+            localStorage.setItem('companies', JSON.stringify(companies));
+            
+            alert(`Registration submitted successfully! Your reference ID is: ${formData.id}`);
+            document.getElementById('registrationForm').reset();
+        }
     }
 }
 

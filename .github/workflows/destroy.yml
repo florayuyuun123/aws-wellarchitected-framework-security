@@ -1,15 +1,13 @@
-name: Destroy Infrastructure
+name: Empty S3 Bucket
 
 on:
   workflow_dispatch:
 
 jobs:
-  destroy:
+  empty-bucket:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v4
-    
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
@@ -22,15 +20,19 @@ jobs:
       with:
         terraform_version: 1.5.0
     
-    - name: Terraform Init
-      run: terraform init
+    - name: Get S3 Bucket Name
+      run: |
+        terraform init
+        echo "BUCKET_NAME=$(terraform output -raw s3_bucket_name)" >> $GITHUB_ENV
     
     - name: Empty S3 Bucket
       run: |
-        BUCKET_NAME=$(terraform output -raw s3_bucket_name) || echo "No bucket found"
-        if [ ! -z "$BUCKET_NAME" ]; then
-          aws s3 rm s3://$BUCKET_NAME --recursive || true
-        fi
-    
-    - name: Terraform Destroy
-      run: terraform destroy -auto-approve
+        echo "Emptying bucket: $BUCKET_NAME"
+        
+        # Delete all object versions
+        aws s3api delete-objects --bucket $BUCKET_NAME --delete "$(aws s3api list-object-versions --bucket $BUCKET_NAME --query '{Objects: Versions[].{Key: Key, VersionId: VersionId}}')" || true
+        
+        # Delete all delete markers
+        aws s3api delete-objects --bucket $BUCKET_NAME --delete "$(aws s3api list-object-versions --bucket $BUCKET_NAME --query '{Objects: DeleteMarkers[].{Key: Key, VersionId: VersionId}}')" || true
+        
+        echo "S3 bucket emptied successfully. You can now run 'terraform destroy' locally."
