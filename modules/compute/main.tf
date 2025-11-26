@@ -36,8 +36,8 @@ resource "aws_lb" "main" {
 
 # Target Group
 resource "aws_lb_target_group" "main" {
-  name     = "${var.project_name}-${var.environment}-tg"
-  port     = 80
+  name     = "${var.project_name}-tg-${formatdate("MMDDhhmm", timestamp())}"
+  port     = 5000
   protocol = "HTTP"
   vpc_id   = var.vpc_id
 
@@ -46,11 +46,15 @@ resource "aws_lb_target_group" "main" {
     healthy_threshold   = 2
     interval            = 30
     matcher             = "200"
-    path                = "/"
-    port                = "traffic-port"
+    path                = "/health"
+    port                = "5000"
     protocol            = "HTTP"
     timeout             = 5
-    unhealthy_threshold = 2
+    unhealthy_threshold = 3
+  }
+
+  lifecycle {
+    create_before_destroy = true
   }
 
   tags = {
@@ -58,7 +62,7 @@ resource "aws_lb_target_group" "main" {
   }
 }
 
-# ALB Listener
+# ALB Listener - HTTP
 resource "aws_lb_listener" "main" {
   load_balancer_arn = aws_lb.main.arn
   port              = "80"
@@ -70,6 +74,34 @@ resource "aws_lb_listener" "main" {
   }
 }
 
+# IAM Role for EC2 SSM
+resource "aws_iam_role" "ec2_ssm_role" {
+  name = "${var.project_name}-${var.environment}-ec2-ssm-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ssm_managed_instance_core" {
+  role       = aws_iam_role.ec2_ssm_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+resource "aws_iam_instance_profile" "ec2_profile" {
+  name = "${var.project_name}-${var.environment}-ec2-profile"
+  role = aws_iam_role.ec2_ssm_role.name
+}
+
 # Launch Template
 resource "aws_launch_template" "main" {
   name_prefix   = "${var.project_name}-${var.environment}-${formatdate("YYYYMMDD-hhmm", timestamp())}-"
@@ -78,43 +110,20 @@ resource "aws_launch_template" "main" {
   key_name      = data.aws_key_pair.main.key_name
 
   vpc_security_group_ids = [var.ec2_security_group]
+  
+  iam_instance_profile {
+    name = aws_iam_instance_profile.ec2_profile.name
+  }
 
   user_data = base64encode(<<-EOF
               #!/bin/bash
               apt update -y
-              apt install -y apache2
-              systemctl start apache2
-              systemctl enable apache2
+              apt install -y awscli
               
-              # Create simple API endpoints
-              cat > /var/www/html/index.html << 'HTMLEOF'
-<!DOCTYPE html>
-<html>
-<head><title>Company Registration API</title></head>
-<body>
-<h1>Company Registration API</h1>
-<p>Status: Running</p>
-<p>Endpoints:</p>
-<ul>
-<li><a href="/health">/health</a> - Health check</li>
-<li>/api/companies - Company registration</li>
-</ul>
-</body>
-</html>
-HTMLEOF
-              
-              # Create health endpoint
-              mkdir -p /var/www/html/health
-              cat > /var/www/html/health/index.html << 'HEALTHEOF'
-{
-  "status": "healthy",
-  "timestamp": "$(date -Iseconds)",
-  "message": "Company Registration API is running"
-}
-HEALTHEOF
-              
-              # Restart Apache
-              systemctl restart apache2
+              # Install SSM agent (usually pre-installed on Ubuntu)
+              snap install amazon-ssm-agent --classic
+              systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
+              systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
               EOF
   )
 
@@ -132,7 +141,7 @@ resource "aws_autoscaling_group" "main" {
   vpc_zone_identifier = var.private_subnet_ids
   target_group_arns   = [aws_lb_target_group.main.arn]
   health_check_type   = "ELB"
-  health_check_grace_period = 300
+  health_check_grace_period = 600
   min_size            = 1
   max_size            = 3
   desired_capacity    = 2

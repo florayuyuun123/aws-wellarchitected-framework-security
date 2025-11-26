@@ -1,7 +1,7 @@
 // API Configuration
 const API_CONFIG = {
     // Replace with your ALB DNS name
-    BASE_URL: 'ALB_DNS_PLACEHOLDER',
+    BASE_URL: 'http://ALB_DNS_PLACEHOLDER',
     ENDPOINTS: {
         REGISTER: '/api/companies',
         STATUS: '/api/companies',
