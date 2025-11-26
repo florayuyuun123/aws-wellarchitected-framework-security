@@ -21,27 +21,68 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: us-east-1
     
-    - name: Get Instance IDs
+    - name: Discover Infrastructure
       run: |
-        INSTANCE_IDS=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names aws-sec-pillar-prod-asg --query "AutoScalingGroups[0].Instances[*].InstanceId" --output text)
+        # Auto-discover ASG name
+        ASG_NAME=$(aws autoscaling describe-auto-scaling-groups --query "AutoScalingGroups[?contains(AutoScalingGroupName, 'aws-sec-pillar-prod')].AutoScalingGroupName" --output text)
+        echo "ASG_NAME=$ASG_NAME" >> $GITHUB_ENV
+        
+        # Get instance IDs from ASG
+        INSTANCE_IDS=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names $ASG_NAME --query "AutoScalingGroups[0].Instances[?LifecycleState=='InService'].InstanceId" --output text)
         echo "INSTANCE_IDS=$INSTANCE_IDS" >> $GITHUB_ENV
+        
+        echo "Found ASG: $ASG_NAME"
+        echo "Found instances: $INSTANCE_IDS"
+    
+    - name: Wait for SSM Ready
+      run: |
+        echo "Waiting for instances to be SSM ready..."
+        for instance_id in $INSTANCE_IDS; do
+          echo "Checking SSM status for $instance_id"
+          
+          # Wait up to 10 minutes for SSM agent
+          timeout=600
+          elapsed=0
+          
+          while [ $elapsed -lt $timeout ]; do
+            status=$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$instance_id" --query "InstanceInformationList[0].PingStatus" --output text 2>/dev/null || echo "NotFound")
+            
+            if [ "$status" = "Online" ]; then
+              echo "Instance $instance_id is SSM ready"
+              break
+            fi
+            
+            echo "Instance $instance_id not ready (status: $status), waiting..."
+            sleep 30
+            elapsed=$((elapsed + 30))
+          done
+          
+          if [ $elapsed -ge $timeout ]; then
+            echo "Timeout waiting for instance $instance_id to be SSM ready"
+            exit 1
+          fi
+        done
     
     - name: Deploy Flask App
       run: |
         for instance_id in $INSTANCE_IDS; do
-          echo "Deploying to instance: $instance_id"
+          echo "Deploying Flask app to instance: $instance_id"
           
-          aws ssm send-command \
+          # Send deployment command
+          command_id=$(aws ssm send-command \
             --instance-ids $instance_id \
             --document-name "AWS-RunShellScript" \
             --parameters 'commands=[
+              "#!/bin/bash",
+              "set -e",
+              "echo \"Starting Flask deployment...\"",
               "sudo apt update -y",
               "sudo apt install -y python3 python3-pip",
               "sudo mkdir -p /opt/app",
               "cd /opt/app",
-              "sudo tee app.py > /dev/null << \"APPEOF\"",
+              "sudo tee app.py > /dev/null << \"EOF\"",
               "from flask import Flask, request, jsonify",
-              "from flask_cors import CORS", 
+              "from flask_cors import CORS",
               "from datetime import datetime",
               "",
               "app = Flask(__name__)",
@@ -65,12 +106,43 @@ jobs:
               "",
               "if __name__ == \"__main__\":",
               "    app.run(host=\"0.0.0.0\", port=5000)",
-              "APPEOF",
+              "EOF",
+              "echo \"Installing Flask dependencies...\"",
               "sudo pip3 install Flask Flask-CORS",
+              "echo \"Stopping existing Flask processes...\"",
               "sudo pkill -f \"python3.*app.py\" || true",
+              "sleep 2",
+              "echo \"Starting Flask app...\"",
               "sudo nohup python3 /opt/app/app.py > /opt/app/app.log 2>&1 &",
-              "sleep 5",
-              "curl -f http://localhost:5000/health || echo \"Health check failed\""
+              "sleep 10",
+              "echo \"Testing Flask app...\"",
+              "curl -f http://localhost:5000/health && echo \"Flask app deployed successfully!\" || echo \"Flask app deployment failed!\""
             ]' \
-            --output text
+            --query "Command.CommandId" --output text)
+          
+          echo "Command sent with ID: $command_id"
+          
+          # Wait for command completion
+          echo "Waiting for deployment to complete..."
+          sleep 60
+          
+          # Check command status
+          aws ssm get-command-invocation \
+            --command-id $command_id \
+            --instance-id $instance_id \
+            --query "StandardOutputContent" --output text
         done
+    
+    - name: Verify Deployment
+      run: |
+        # Get ALB DNS name
+        ALB_DNS=$(aws elbv2 describe-load-balancers --query "LoadBalancers[?contains(LoadBalancerName, 'aws-sec-pillar-prod')].DNSName" --output text)
+        echo "ALB DNS: $ALB_DNS"
+        
+        # Wait for health checks to pass
+        echo "Waiting for health checks to pass..."
+        sleep 120
+        
+        # Test ALB endpoint
+        echo "Testing ALB endpoint..."
+        curl -f http://$ALB_DNS/health && echo "✅ Backend deployment successful!" || echo "❌ Backend deployment failed!"
