@@ -21,128 +21,108 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: us-east-1
     
-    - name: Discover Infrastructure
+    - name: Get Infrastructure Info
       run: |
-        # Auto-discover ASG name
-        ASG_NAME=$(aws autoscaling describe-auto-scaling-groups --query "AutoScalingGroups[?contains(AutoScalingGroupName, 'aws-sec-pillar-prod')].AutoScalingGroupName" --output text)
-        echo "ASG_NAME=$ASG_NAME" >> $GITHUB_ENV
+        # Get bastion IP
+        BASTION_IP=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=*bastion*" "Name=instance-state-name,Values=running" --query "Reservations[0].Instances[0].PublicIpAddress" --output text)
+        echo "BASTION_IP=$BASTION_IP" >> $GITHUB_ENV
         
-        # Get instance IDs from ASG
-        INSTANCE_IDS=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names $ASG_NAME --query "AutoScalingGroups[0].Instances[?LifecycleState=='InService'].InstanceId" --output text)
-        echo "INSTANCE_IDS=$INSTANCE_IDS" >> $GITHUB_ENV
+        # Get private instance IPs
+        PRIVATE_IPS=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names aws-sec-pillar-prod-asg --query "AutoScalingGroups[0].Instances[?LifecycleState=='InService'].InstanceId" --output text | xargs -I {} aws ec2 describe-instances --instance-ids {} --query "Reservations[0].Instances[0].PrivateIpAddress" --output text | tr '\n' ' ')
+        echo "PRIVATE_IPS=$PRIVATE_IPS" >> $GITHUB_ENV
         
-        echo "Found ASG: $ASG_NAME"
-        echo "Found instances: $INSTANCE_IDS"
+        echo "Bastion IP: $BASTION_IP"
+        echo "Private IPs: $PRIVATE_IPS"
     
-    - name: Wait for SSM Ready
+    - name: Create Flask App Script
       run: |
-        echo "Waiting for instances to be SSM ready..."
-        for instance_id in $INSTANCE_IDS; do
-          echo "Checking SSM status for $instance_id"
+        cat > deploy_flask.sh << 'EOF'
+        #!/bin/bash
+        set -e
+        
+        # Update system
+        sudo apt update -y
+        sudo apt install -y python3 python3-pip
+        
+        # Create app directory
+        sudo mkdir -p /opt/app
+        cd /opt/app
+        
+        # Create Flask app
+        sudo tee app.py > /dev/null << 'PYEOF'
+        from flask import Flask, request, jsonify
+        from flask_cors import CORS
+        from datetime import datetime
+        
+        app = Flask(__name__)
+        CORS(app)
+        
+        @app.route('/health')
+        def health():
+            return jsonify({
+                'status': 'healthy',
+                'timestamp': datetime.now().isoformat(),
+                'message': 'Company Registration API is running'
+            })
+        
+        @app.route('/api/companies', methods=['POST'])
+        def register_company():
+            return jsonify({'message': 'Company registered', 'reg_number': 'REG001'})
+        
+        @app.route('/api/companies/<reg_number>')
+        def get_company(reg_number):
+            return jsonify({'reg_number': reg_number, 'status': 'pending'})
+        
+        if __name__ == '__main__':
+            app.run(host='0.0.0.0', port=5000)
+        PYEOF
+        
+        # Install dependencies
+        sudo pip3 install Flask Flask-CORS
+        
+        # Stop existing processes
+        sudo pkill -f "python3.*app.py" || true
+        sleep 2
+        
+        # Start Flask app
+        sudo nohup python3 /opt/app/app.py > /opt/app/app.log 2>&1 &
+        sleep 5
+        
+        # Test
+        curl -f http://localhost:5000/health && echo "SUCCESS: Flask deployed!" || echo "FAILED: Flask not responding"
+        EOF
+        
+        chmod +x deploy_flask.sh
+    
+    - name: Deploy via Bastion
+      run: |
+        # Create SSH key (you'll need to add your private key as a secret)
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ssh_key
+        chmod 600 ssh_key
+        
+        # Deploy to each private instance via bastion
+        for private_ip in $PRIVATE_IPS; do
+          echo "Deploying to $private_ip via bastion $BASTION_IP"
           
-          # Wait up to 10 minutes for SSM agent
-          timeout=600
-          elapsed=0
+          # Copy script to bastion
+          scp -i ssh_key -o StrictHostKeyChecking=no deploy_flask.sh ubuntu@$BASTION_IP:/tmp/
           
-          while [ $elapsed -lt $timeout ]; do
-            status=$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$instance_id" --query "InstanceInformationList[0].PingStatus" --output text 2>/dev/null || echo "NotFound")
-            
-            if [ "$status" = "Online" ]; then
-              echo "Instance $instance_id is SSM ready"
-              break
-            fi
-            
-            echo "Instance $instance_id not ready (status: $status), waiting..."
-            sleep 30
-            elapsed=$((elapsed + 30))
-          done
-          
-          if [ $elapsed -ge $timeout ]; then
-            echo "Timeout waiting for instance $instance_id to be SSM ready"
-            exit 1
-          fi
+          # Copy script from bastion to private instance and execute
+          ssh -i ssh_key -o StrictHostKeyChecking=no ubuntu@$BASTION_IP "
+            scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no /tmp/deploy_flask.sh ubuntu@$private_ip:/tmp/ &&
+            ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ubuntu@$private_ip 'chmod +x /tmp/deploy_flask.sh && /tmp/deploy_flask.sh'
+          "
         done
     
-    - name: Deploy Flask App
+    - name: Test Deployment
       run: |
-        for instance_id in $INSTANCE_IDS; do
-          echo "Deploying Flask app to instance: $instance_id"
-          
-          # Send deployment command
-          command_id=$(aws ssm send-command \
-            --instance-ids $instance_id \
-            --document-name "AWS-RunShellScript" \
-            --parameters 'commands=[
-              "#!/bin/bash",
-              "set -e",
-              "echo \"Starting Flask deployment...\"",
-              "sudo apt update -y",
-              "sudo apt install -y python3 python3-pip",
-              "sudo mkdir -p /opt/app",
-              "cd /opt/app",
-              "sudo tee app.py > /dev/null << \"EOF\"",
-              "from flask import Flask, request, jsonify",
-              "from flask_cors import CORS",
-              "from datetime import datetime",
-              "",
-              "app = Flask(__name__)",
-              "CORS(app)",
-              "",
-              "@app.route(\"/health\")",
-              "def health():",
-              "    return jsonify({",
-              "        \"status\": \"healthy\",",
-              "        \"timestamp\": datetime.now().isoformat(),",
-              "        \"message\": \"Company Registration API is running\"",
-              "    })",
-              "",
-              "@app.route(\"/api/companies\", methods=[\"POST\"])",
-              "def register_company():",
-              "    return jsonify({\"message\": \"Company registered\", \"reg_number\": \"REG001\"})",
-              "",
-              "@app.route(\"/api/companies/<reg_number>\")",
-              "def get_company(reg_number):",
-              "    return jsonify({\"reg_number\": reg_number, \"status\": \"pending\"})",
-              "",
-              "if __name__ == \"__main__\":",
-              "    app.run(host=\"0.0.0.0\", port=5000)",
-              "EOF",
-              "echo \"Installing Flask dependencies...\"",
-              "sudo pip3 install Flask Flask-CORS",
-              "echo \"Stopping existing Flask processes...\"",
-              "sudo pkill -f \"python3.*app.py\" || true",
-              "sleep 2",
-              "echo \"Starting Flask app...\"",
-              "sudo nohup python3 /opt/app/app.py > /opt/app/app.log 2>&1 &",
-              "sleep 10",
-              "echo \"Testing Flask app...\"",
-              "curl -f http://localhost:5000/health && echo \"Flask app deployed successfully!\" || echo \"Flask app deployment failed!\""
-            ]' \
-            --query "Command.CommandId" --output text)
-          
-          echo "Command sent with ID: $command_id"
-          
-          # Wait for command completion
-          echo "Waiting for deployment to complete..."
-          sleep 60
-          
-          # Check command status
-          aws ssm get-command-invocation \
-            --command-id $command_id \
-            --instance-id $instance_id \
-            --query "StandardOutputContent" --output text
-        done
-    
-    - name: Verify Deployment
-      run: |
-        # Get ALB DNS name
+        # Get ALB DNS
         ALB_DNS=$(aws elbv2 describe-load-balancers --query "LoadBalancers[?contains(LoadBalancerName, 'aws-sec-pillar-prod')].DNSName" --output text)
-        echo "ALB DNS: $ALB_DNS"
         
-        # Wait for health checks to pass
-        echo "Waiting for health checks to pass..."
-        sleep 120
+        # Wait for health checks
+        echo "Waiting 60 seconds for health checks..."
+        sleep 60
         
-        # Test ALB endpoint
-        echo "Testing ALB endpoint..."
-        curl -f http://$ALB_DNS/health && echo "✅ Backend deployment successful!" || echo "❌ Backend deployment failed!"
+        # Test ALB
+        echo "Testing ALB at: http://$ALB_DNS/health"
+        curl -f http://$ALB_DNS/health && echo "🎉 SUCCESS!" || echo "❌ FAILED"
