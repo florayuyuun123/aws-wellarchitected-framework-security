@@ -93,16 +93,7 @@ jobs:
         
         echo "✅ Service update initiated!"
     
-    - name: Force Instance Refresh
-      run: |
-        # Get ASG name
-        ASG_NAME=$(aws autoscaling describe-auto-scaling-groups --query "AutoScalingGroups[?contains(AutoScalingGroupName, 'aws-sec-pillar-prod')].AutoScalingGroupName" --output text)
-        
-        echo "Triggering instance refresh for ASG: $ASG_NAME"
-        aws autoscaling start-instance-refresh --auto-scaling-group-name $ASG_NAME --preferences '{"MinHealthyPercentage": 50}'
-        
-        echo "Instance refresh initiated - new instances will have correct ECS permissions"
-    
+
     - name: Check Deployment Status
       run: |
         SERVICE_NAME=$(aws ecs list-services --cluster $CLUSTER_NAME --query "serviceArns[0]" --output text | cut -d'/' -f3)
