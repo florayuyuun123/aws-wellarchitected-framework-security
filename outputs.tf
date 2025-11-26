@@ -34,7 +34,3 @@ output "target_group_arn" {
   value       = module.compute.target_group_arn
 }
 
-output "ecr_repository_url" {
-  description = "ECR repository URL"
-  value       = module.ecs.ecr_repository_url
-}

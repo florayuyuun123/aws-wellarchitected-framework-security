@@ -37,7 +37,7 @@ resource "aws_lb" "main" {
 # Target Group
 resource "aws_lb_target_group" "main" {
   name     = "${var.project_name}-tg-${formatdate("MMDDhhmm", timestamp())}"
-  port     = 80
+  port     = 5000
   protocol = "HTTP"
   vpc_id   = var.vpc_id
 
@@ -47,7 +47,7 @@ resource "aws_lb_target_group" "main" {
     interval            = 30
     matcher             = "200"
     path                = "/health"
-    port                = "traffic-port"
+    port                = "5000"
     protocol            = "HTTP"
     timeout             = 5
     unhealthy_threshold = 3
@@ -69,14 +69,18 @@ resource "aws_lb_listener" "main" {
   protocol          = "HTTP"
 
   default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.main.arn
+    type = "forward"
+    forward {
+      target_group {
+        arn = aws_lb_target_group.main.arn
+      }
+    }
   }
 }
 
-# ECS Instance Role
-resource "aws_iam_role" "ecs_instance_role" {
-  name = "${var.project_name}-${var.environment}-ecs-instance-role"
+# IAM Role for EC2 SSM
+resource "aws_iam_role" "ec2_ssm_role" {
+  name = "${var.project_name}-${var.environment}-ec2-ssm-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -92,14 +96,14 @@ resource "aws_iam_role" "ecs_instance_role" {
   })
 }
 
-resource "aws_iam_role_policy_attachment" "ecs_instance_role" {
-  role       = aws_iam_role.ecs_instance_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
+resource "aws_iam_role_policy_attachment" "ssm_managed_instance_core" {
+  role       = aws_iam_role.ec2_ssm_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
-resource "aws_iam_instance_profile" "ecs_instance_profile" {
-  name = "${var.project_name}-${var.environment}-ecs-instance-profile"
-  role = aws_iam_role.ecs_instance_role.name
+resource "aws_iam_instance_profile" "ec2_profile" {
+  name = "${var.project_name}-${var.environment}-ec2-profile"
+  role = aws_iam_role.ec2_ssm_role.name
 }
 
 # Launch Template
@@ -112,48 +116,10 @@ resource "aws_launch_template" "main" {
   vpc_security_group_ids = [var.ec2_security_group]
   
   iam_instance_profile {
-    name = aws_iam_instance_profile.ecs_instance_profile.name
+    name = aws_iam_instance_profile.ec2_profile.name
   }
 
-  user_data = base64encode(<<-EOF
-              #!/bin/bash
-              set -e
-              
-              # Log everything
-              exec > >(tee /var/log/user-data.log) 2>&1
-              echo "Starting ECS agent setup at $(date)"
-              
-              # Update system
-              apt update -y
-              apt install -y awscli docker.io
-              
-              # Start Docker
-              systemctl enable docker
-              systemctl start docker
-              usermod -aG docker ubuntu
-              
-              # Create ECS config directory
-              mkdir -p /etc/ecs
-              
-              # Configure ECS agent
-              echo "ECS_CLUSTER=${var.ecs_cluster_name}" > /etc/ecs/ecs.config
-              echo "ECS_ENABLE_TASK_IAM_ROLE=true" >> /etc/ecs/ecs.config
-              
-              # Install and start ECS agent
-              docker run --name ecs-agent \
-                --detach=true \
-                --restart=on-failure:10 \
-                --volume=/var/run:/var/run \
-                --volume=/var/log/ecs/:/log \
-                --volume=/var/lib/ecs/data:/data \
-                --volume=/etc/ecs:/etc/ecs \
-                --net=host \
-                --env-file=/etc/ecs/ecs.config \
-                amazon/amazon-ecs-agent:latest
-              
-              echo "ECS agent setup completed at $(date)"
-              EOF
-  )
+  user_data = base64encode(file("${path.module}/../../scripts/setup-backend.sh"))
 
   tag_specifications {
     resource_type = "instance"
