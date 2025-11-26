@@ -21,16 +21,15 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: us-east-1
     
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v3
-      with:
-        terraform_version: 1.5.0
-    
-    - name: Get Infrastructure Outputs
+    - name: Discover AWS Resources
       run: |
-        terraform init
-        echo "BUCKET_NAME=$(terraform output -raw s3_bucket_name)" >> $GITHUB_ENV
-        echo "ALB_DNS=$(terraform output -raw alb_dns_name)" >> $GITHUB_ENV
+        # Get S3 bucket with specific tag pattern
+        BUCKET_NAME=$(aws s3api list-buckets --query "Buckets[?contains(Name, 'aws-sec-pillar-prod')].Name" --output text)
+        echo "BUCKET_NAME=$BUCKET_NAME" >> $GITHUB_ENV
+        
+        # Get ALB DNS name
+        ALB_DNS=$(aws elbv2 describe-load-balancers --query "LoadBalancers[?contains(LoadBalancerName, 'aws-sec-pillar-prod')].DNSName" --output text)
+        echo "ALB_DNS=$ALB_DNS" >> $GITHUB_ENV
     
     - name: Update Config with ALB DNS
       run: |
