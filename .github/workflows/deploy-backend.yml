@@ -97,8 +97,17 @@ jobs:
       run: |
         SERVICE_NAME=$(aws ecs list-services --cluster $CLUSTER_NAME --query "serviceArns[0]" --output text | cut -d'/' -f3)
         
-        echo "Deployment initiated, checking status..."
+        echo "=== ECS Cluster Status ==="
+        aws ecs describe-clusters --clusters $CLUSTER_NAME --query 'clusters[0].{registeredContainerInstancesCount:registeredContainerInstancesCount,runningTasksCount:runningTasksCount,activeServicesCount:activeServicesCount}'
+        
+        echo "=== Container Instances ==="
+        aws ecs list-container-instances --cluster $CLUSTER_NAME
+        
+        echo "=== Service Status ==="
         aws ecs describe-services --cluster $CLUSTER_NAME --services $SERVICE_NAME --query 'services[0].deployments[0]'
+        
+        echo "=== Failed Tasks ==="
+        aws ecs list-tasks --cluster $CLUSTER_NAME --service-name $SERVICE_NAME --desired-status STOPPED --query 'taskArns[0:3]' --output text | xargs -I {} aws ecs describe-tasks --cluster $CLUSTER_NAME --tasks {} --query 'tasks[0].{taskArn:taskArn,lastStatus:lastStatus,stoppedReason:stoppedReason}' || echo "No stopped tasks"
         
         echo "✅ Proceeding to verification..."
     
