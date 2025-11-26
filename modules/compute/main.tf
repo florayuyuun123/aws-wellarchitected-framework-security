@@ -125,23 +125,31 @@ resource "aws_launch_template" "main" {
               
               # Update system
               apt update -y
-              apt install -y awscli
+              apt install -y awscli docker.io
               
-              # Install Docker
-              curl -fsSL https://get.docker.com -o get-docker.sh
-              sh get-docker.sh
-              usermod -aG docker ubuntu
+              # Start Docker
               systemctl enable docker
               systemctl start docker
+              usermod -aG docker ubuntu
               
-              # Install ECS agent
-              echo "ECS_CLUSTER=${var.ecs_cluster_name}" >> /etc/ecs/ecs.config
+              # Create ECS config directory
+              mkdir -p /etc/ecs
+              
+              # Configure ECS agent
+              echo "ECS_CLUSTER=${var.ecs_cluster_name}" > /etc/ecs/ecs.config
               echo "ECS_ENABLE_TASK_IAM_ROLE=true" >> /etc/ecs/ecs.config
               
-              # Install ECS agent
-              curl -o /tmp/ecs-init https://s3.amazonaws.com/amazon-ecs-agent-us-east-1/ecs-init
-              chmod +x /tmp/ecs-init
-              /tmp/ecs-init start
+              # Install and start ECS agent
+              docker run --name ecs-agent \
+                --detach=true \
+                --restart=on-failure:10 \
+                --volume=/var/run:/var/run \
+                --volume=/var/log/ecs/:/log \
+                --volume=/var/lib/ecs/data:/data \
+                --volume=/etc/ecs:/etc/ecs \
+                --net=host \
+                --env-file=/etc/ecs/ecs.config \
+                amazon/amazon-ecs-agent:latest
               
               echo "ECS agent setup completed at $(date)"
               EOF
