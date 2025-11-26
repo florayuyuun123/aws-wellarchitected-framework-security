@@ -26,10 +26,15 @@ jobs:
       with:
         terraform_version: 1.5.0
     
-    - name: Get S3 Bucket Name
+    - name: Get Infrastructure Outputs
       run: |
         terraform init
         echo "BUCKET_NAME=$(terraform output -raw s3_bucket_name)" >> $GITHUB_ENV
+        echo "ALB_DNS=$(terraform output -raw alb_dns_name)" >> $GITHUB_ENV
+    
+    - name: Update Config with ALB DNS
+      run: |
+        sed -i "s|ALB_DNS_PLACEHOLDER|http://$ALB_DNS|g" website/js/config.js
     
     - name: Deploy Website
       run: |
