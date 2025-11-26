@@ -42,3 +42,8 @@ variable "rds_endpoint" {
   description = "RDS endpoint for database connection"
   type        = string
 }
+
+variable "ecs_cluster_name" {
+  description = "ECS cluster name"
+  type        = string
+}

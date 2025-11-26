@@ -47,7 +47,7 @@ resource "aws_lb_target_group" "main" {
     interval            = 30
     matcher             = "200"
     path                = "/health"
-    port                = "5000"
+    port                = "traffic-port"
     protocol            = "HTTP"
     timeout             = 5
     unhealthy_threshold = 3
@@ -117,13 +117,33 @@ resource "aws_launch_template" "main" {
 
   user_data = base64encode(<<-EOF
               #!/bin/bash
+              set -e
+              
+              # Log everything
+              exec > >(tee /var/log/user-data.log) 2>&1
+              echo "Starting ECS agent setup at $(date)"
+              
+              # Update system
               apt update -y
               apt install -y awscli
               
-              # Install SSM agent (usually pre-installed on Ubuntu)
-              snap install amazon-ssm-agent --classic
-              systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
-              systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
+              # Install Docker
+              curl -fsSL https://get.docker.com -o get-docker.sh
+              sh get-docker.sh
+              usermod -aG docker ubuntu
+              systemctl enable docker
+              systemctl start docker
+              
+              # Install ECS agent
+              echo "ECS_CLUSTER=${var.ecs_cluster_name}" >> /etc/ecs/ecs.config
+              echo "ECS_ENABLE_TASK_IAM_ROLE=true" >> /etc/ecs/ecs.config
+              
+              # Install ECS agent
+              curl -o /tmp/ecs-init https://s3.amazonaws.com/amazon-ecs-agent-us-east-1/ecs-init
+              chmod +x /tmp/ecs-init
+              /tmp/ecs-init start
+              
+              echo "ECS agent setup completed at $(date)"
               EOF
   )
 

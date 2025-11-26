@@ -1,4 +1,4 @@
-name: Deploy Backend
+name: Deploy Backend to ECS
 
 on:
   push:
@@ -21,108 +21,103 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: us-east-1
     
-    - name: Get Infrastructure Info
+    - name: Discover Infrastructure
       run: |
-        # Get bastion IP
-        BASTION_IP=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=*bastion*" "Name=instance-state-name,Values=running" --query "Reservations[0].Instances[0].PublicIpAddress" --output text)
-        echo "BASTION_IP=$BASTION_IP" >> $GITHUB_ENV
+        # Auto-discover ECR repository
+        ECR_REPO=$(aws ecr describe-repositories --query "repositories[?contains(repositoryName, 'backend')].repositoryUri" --output text)
+        echo "ECR_REPO=$ECR_REPO" >> $GITHUB_ENV
         
-        # Get private instance IPs
-        PRIVATE_IPS=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names aws-sec-pillar-prod-asg --query "AutoScalingGroups[0].Instances[?LifecycleState=='InService'].InstanceId" --output text | xargs -I {} aws ec2 describe-instances --instance-ids {} --query "Reservations[0].Instances[0].PrivateIpAddress" --output text | tr '\n' ' ')
-        echo "PRIVATE_IPS=$PRIVATE_IPS" >> $GITHUB_ENV
+        # Auto-discover ECS cluster
+        CLUSTER_NAME=$(aws ecs list-clusters --query "clusterArns[?contains(@, 'cluster')][0]" --output text | cut -d'/' -f2)
+        echo "CLUSTER_NAME=$CLUSTER_NAME" >> $GITHUB_ENV
         
-        echo "Bastion IP: $BASTION_IP"
-        echo "Private IPs: $PRIVATE_IPS"
+        echo "Found ECR Repository: $ECR_REPO"
+        echo "Found ECS Cluster: $CLUSTER_NAME"
     
-    - name: Create Flask App Script
+    - name: Login to ECR
       run: |
-        cat > deploy_flask.sh << 'EOF'
-        #!/bin/bash
-        set -e
-        
-        # Update system
-        sudo apt update -y
-        sudo apt install -y python3 python3-pip
-        
-        # Create app directory
-        sudo mkdir -p /opt/app
-        cd /opt/app
-        
-        # Create Flask app
-        sudo tee app.py > /dev/null << 'PYEOF'
-        from flask import Flask, request, jsonify
-        from flask_cors import CORS
-        from datetime import datetime
-        
-        app = Flask(__name__)
-        CORS(app)
-        
-        @app.route('/health')
-        def health():
-            return jsonify({
-                'status': 'healthy',
-                'timestamp': datetime.now().isoformat(),
-                'message': 'Company Registration API is running'
-            })
-        
-        @app.route('/api/companies', methods=['POST'])
-        def register_company():
-            return jsonify({'message': 'Company registered', 'reg_number': 'REG001'})
-        
-        @app.route('/api/companies/<reg_number>')
-        def get_company(reg_number):
-            return jsonify({'reg_number': reg_number, 'status': 'pending'})
-        
-        if __name__ == '__main__':
-            app.run(host='0.0.0.0', port=5000)
-        PYEOF
-        
-        # Install dependencies
-        sudo pip3 install Flask Flask-CORS
-        
-        # Stop existing processes
-        sudo pkill -f "python3.*app.py" || true
-        sleep 2
-        
-        # Start Flask app
-        sudo nohup python3 /opt/app/app.py > /opt/app/app.log 2>&1 &
-        sleep 5
-        
-        # Test
-        curl -f http://localhost:5000/health && echo "SUCCESS: Flask deployed!" || echo "FAILED: Flask not responding"
-        EOF
-        
-        chmod +x deploy_flask.sh
+        aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $(echo $ECR_REPO | cut -d'/' -f1)
     
-    - name: Deploy via Bastion
+    - name: Build and Push Docker Image
       run: |
-        # Create SSH key (you'll need to add your private key as a secret)
-        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ssh_key
-        chmod 600 ssh_key
+        cd backend
         
-        # Deploy to each private instance via bastion
-        for private_ip in $PRIVATE_IPS; do
-          echo "Deploying to $private_ip via bastion $BASTION_IP"
-          
-          # Copy script to bastion
-          scp -i ssh_key -o StrictHostKeyChecking=no deploy_flask.sh ubuntu@$BASTION_IP:/tmp/
-          
-          # Copy script from bastion to private instance and execute
-          ssh -i ssh_key -o StrictHostKeyChecking=no ubuntu@$BASTION_IP "
-            scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no /tmp/deploy_flask.sh ubuntu@$private_ip:/tmp/ &&
-            ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ubuntu@$private_ip 'chmod +x /tmp/deploy_flask.sh && /tmp/deploy_flask.sh'
-          "
-        done
+        # Build with commit SHA tag for versioning
+        IMAGE_TAG=${GITHUB_SHA:0:7}
+        
+        echo "Building Docker image..."
+        docker build -t $ECR_REPO:$IMAGE_TAG -t $ECR_REPO:latest .
+        
+        echo "Pushing to ECR..."
+        docker push $ECR_REPO:$IMAGE_TAG
+        docker push $ECR_REPO:latest
+        
+        echo "IMAGE_URI=$ECR_REPO:$IMAGE_TAG" >> $GITHUB_ENV
+        echo "✅ Image pushed: $ECR_REPO:$IMAGE_TAG"
     
-    - name: Test Deployment
+    - name: Update ECS Task Definition
+      run: |
+        # Get current task definition
+        TASK_FAMILY=$(aws ecs list-task-definitions --family-prefix "aws-sec-pillar-prod-backend" --status ACTIVE --sort DESC --query "taskDefinitionArns[0]" --output text | cut -d'/' -f2 | cut -d':' -f1)
+        
+        echo "Updating task definition: $TASK_FAMILY"
+        
+        # Get current task definition
+        aws ecs describe-task-definition --task-definition $TASK_FAMILY --query taskDefinition > task-def.json
+        
+        # Update image URI in task definition
+        jq --arg IMAGE_URI "$IMAGE_URI" '.containerDefinitions[0].image = $IMAGE_URI' task-def.json > new-task-def.json
+        
+        # Remove unnecessary fields
+        jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .placementConstraints, .compatibilities, .registeredAt, .registeredBy)' new-task-def.json > final-task-def.json
+        
+        # Register new task definition
+        NEW_TASK_DEF=$(aws ecs register-task-definition --cli-input-json file://final-task-def.json --query 'taskDefinition.taskDefinitionArn' --output text)
+        echo "NEW_TASK_DEF=$NEW_TASK_DEF" >> $GITHUB_ENV
+        
+        echo "✅ New task definition registered: $NEW_TASK_DEF"
+    
+    - name: Update ECS Service
+      run: |
+        # Auto-discover service name
+        SERVICE_NAME=$(aws ecs list-services --cluster $CLUSTER_NAME --query "serviceArns[?contains(@, 'service')][0]" --output text | cut -d'/' -f3)
+        
+        echo "Updating ECS service: $SERVICE_NAME"
+        
+        # Update service with new task definition
+        aws ecs update-service \
+          --cluster $CLUSTER_NAME \
+          --service $SERVICE_NAME \
+          --task-definition $NEW_TASK_DEF \
+          --force-new-deployment
+        
+        echo "✅ Service update initiated!"
+    
+    - name: Wait for Deployment
+      run: |
+        SERVICE_NAME=$(aws ecs list-services --cluster $CLUSTER_NAME --query "serviceArns[?contains(@, 'service')][0]" --output text | cut -d'/' -f3)
+        
+        echo "Waiting for deployment to stabilize..."
+        aws ecs wait services-stable --cluster $CLUSTER_NAME --services $SERVICE_NAME --cli-read-timeout 600
+        
+        echo "✅ Deployment completed successfully!"
+    
+    - name: Verify Deployment
       run: |
         # Get ALB DNS
         ALB_DNS=$(aws elbv2 describe-load-balancers --query "LoadBalancers[?contains(LoadBalancerName, 'aws-sec-pillar-prod')].DNSName" --output text)
         
-        # Wait for health checks
-        echo "Waiting 60 seconds for health checks..."
-        sleep 60
+        echo "Testing backend API at: http://$ALB_DNS/health"
         
-        # Test ALB
-        echo "Testing ALB at: http://$ALB_DNS/health"
-        curl -f http://$ALB_DNS/health && echo "🎉 SUCCESS!" || echo "❌ FAILED"
+        # Test health endpoint
+        if curl -f http://$ALB_DNS/health; then
+          echo "🎉 Backend deployment successful!"
+          echo "✅ API is responding correctly"
+        else
+          echo "❌ Backend deployment failed - API not responding"
+          exit 1
+        fi
+        
+        # Test API endpoints
+        echo "Testing API endpoints..."
+        curl -s http://$ALB_DNS/api/companies/TEST123 && echo "✅ API endpoints working"

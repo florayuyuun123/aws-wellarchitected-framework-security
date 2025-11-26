@@ -40,6 +40,15 @@ module "security" {
   vpc_cidr     = var.vpc_cidr
 }
 
+module "ecs" {
+  source = "./modules/ecs"
+  
+  project_name      = var.project_name
+  environment       = var.environment
+  target_group_arn  = module.compute.target_group_arn
+  alb_listener_arn  = module.compute.alb_listener_arn
+}
+
 module "compute" {
   source = "./modules/compute"
   
@@ -52,6 +61,7 @@ module "compute" {
   ec2_security_group  = module.security.ec2_security_group_id
   bastion_security_group = module.security.bastion_security_group_id
   rds_endpoint        = module.database.rds_endpoint
+  ecs_cluster_name    = module.ecs.ecs_cluster_name
 }
 
 module "database" {

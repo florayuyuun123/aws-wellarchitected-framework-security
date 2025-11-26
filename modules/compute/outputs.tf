@@ -17,3 +17,8 @@ output "target_group_arn" {
   description = "ALB Target Group ARN"
   value       = aws_lb_target_group.main.arn
 }
+
+output "alb_listener_arn" {
+  description = "ALB listener ARN"
+  value       = aws_lb_listener.main.arn
+}
