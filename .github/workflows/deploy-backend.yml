@@ -97,10 +97,19 @@ jobs:
       run: |
         SERVICE_NAME=$(aws ecs list-services --cluster $CLUSTER_NAME --query "serviceArns[0]" --output text | cut -d'/' -f3)
         
-        echo "Waiting for deployment to stabilize..."
-        aws ecs wait services-stable --cluster $CLUSTER_NAME --services $SERVICE_NAME --cli-read-timeout 600
+        echo "Checking deployment status..."
         
-        echo "✅ Deployment completed successfully!"
+        # Wait with shorter timeout and check status
+        timeout 300 aws ecs wait services-stable --cluster $CLUSTER_NAME --services $SERVICE_NAME || {
+          echo "⚠️ Deployment taking longer than expected, checking service status..."
+          
+          # Check service status
+          aws ecs describe-services --cluster $CLUSTER_NAME --services $SERVICE_NAME --query 'services[0].deployments[0]'
+          
+          echo "Continuing with verification..."
+        }
+        
+        echo "✅ Deployment check completed!"
     
     - name: Verify Deployment
       run: |

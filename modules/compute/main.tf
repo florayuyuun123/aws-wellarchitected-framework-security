@@ -37,7 +37,7 @@ resource "aws_lb" "main" {
 # Target Group
 resource "aws_lb_target_group" "main" {
   name     = "${var.project_name}-tg-${formatdate("MMDDhhmm", timestamp())}"
-  port     = 5000
+  port     = 80
   protocol = "HTTP"
   vpc_id   = var.vpc_id
 
