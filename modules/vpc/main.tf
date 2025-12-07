@@ -80,41 +80,7 @@ resource "aws_route_table_association" "private" {
   route_table_id = aws_route_table.private.id
 }
 
-# VPC Endpoints
-resource "aws_vpc_endpoint" "s3" {
-  vpc_id       = aws_vpc.main.id
-  service_name = "com.amazonaws.${data.aws_region.current.name}.s3"
-  
-  tags = {
-    Name = "${var.project_name}-${var.environment}-s3-endpoint"
-  }
-}
-
-resource "aws_vpc_endpoint" "ec2" {
-  vpc_id              = aws_vpc.main.id
-  service_name        = "com.amazonaws.${data.aws_region.current.name}.ec2"
-  vpc_endpoint_type   = "Interface"
-  subnet_ids          = aws_subnet.private[*].id
-  security_group_ids  = [aws_security_group.vpc_endpoints.id]
-  
-  tags = {
-    Name = "${var.project_name}-${var.environment}-ec2-endpoint"
-  }
-}
-
-resource "aws_vpc_endpoint" "ssm" {
-  vpc_id              = aws_vpc.main.id
-  service_name        = "com.amazonaws.${data.aws_region.current.name}.ssm"
-  vpc_endpoint_type   = "Interface"
-  subnet_ids          = aws_subnet.private[*].id
-  security_group_ids  = [aws_security_group.vpc_endpoints.id]
-  
-  tags = {
-    Name = "${var.project_name}-${var.environment}-ssm-endpoint"
-  }
-}
-
-# Security Group for VPC Endpoints
+# Security Group for VPC Endpoints (must be created first)
 resource "aws_security_group" "vpc_endpoints" {
   name_prefix = "${var.project_name}-${var.environment}-vpc-endpoints"
   vpc_id      = aws_vpc.main.id
@@ -122,6 +88,13 @@ resource "aws_security_group" "vpc_endpoints" {
   ingress {
     from_port   = 443
     to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+  }
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
     protocol    = "tcp"
     cidr_blocks = [var.vpc_cidr]
   }
@@ -135,6 +108,78 @@ resource "aws_security_group" "vpc_endpoints" {
 
   tags = {
     Name = "${var.project_name}-${var.environment}-vpc-endpoints-sg"
+  }
+}
+
+# VPC Endpoints
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id       = aws_vpc.main.id
+  service_name = "com.amazonaws.${data.aws_region.current.name}.s3"
+  
+  tags = {
+    Name = "${var.project_name}-${var.environment}-s3-endpoint"
+  }
+}
+
+# Associate S3 endpoint with route table
+resource "aws_vpc_endpoint_route_table_association" "s3_private" {
+  route_table_id  = aws_route_table.private.id
+  vpc_endpoint_id = aws_vpc_endpoint.s3.id
+}
+
+resource "aws_vpc_endpoint" "ec2" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${data.aws_region.current.name}.ec2"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  
+  depends_on = [aws_security_group.vpc_endpoints]
+  
+  tags = {
+    Name = "${var.project_name}-${var.environment}-ec2-endpoint"
+  }
+}
+
+resource "aws_vpc_endpoint" "ssm" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${data.aws_region.current.name}.ssm"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  
+  depends_on = [aws_security_group.vpc_endpoints]
+  
+  tags = {
+    Name = "${var.project_name}-${var.environment}-ssm-endpoint"
+  }
+}
+
+resource "aws_vpc_endpoint" "ssm_messages" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${data.aws_region.current.name}.ssmmessages"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  
+  depends_on = [aws_security_group.vpc_endpoints]
+  
+  tags = {
+    Name = "${var.project_name}-${var.environment}-ssm-messages-endpoint"
+  }
+}
+
+resource "aws_vpc_endpoint" "ec2_messages" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${data.aws_region.current.name}.ec2messages"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  
+  depends_on = [aws_security_group.vpc_endpoints]
+  
+  tags = {
+    Name = "${var.project_name}-${var.environment}-ec2-messages-endpoint"
   }
 }
 

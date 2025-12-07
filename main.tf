@@ -52,6 +52,8 @@ module "compute" {
   ec2_security_group  = module.security.ec2_security_group_id
   bastion_security_group = module.security.bastion_security_group_id
   rds_endpoint        = module.database.rds_endpoint
+  
+  depends_on = [module.vpc, module.security, module.database]
 }
 
 module "database" {
@@ -62,6 +64,8 @@ module "database" {
   vpc_id             = module.vpc.vpc_id
   private_subnet_ids = module.vpc.private_subnet_ids
   db_security_group  = module.security.rds_security_group_id
+  
+  depends_on = [module.vpc, module.security]
 }
 
 module "storage" {
@@ -78,4 +82,6 @@ module "waf" {
   project_name = var.project_name
   environment  = var.environment
   alb_arn      = module.compute.alb_arn
+  
+  depends_on = [module.compute]
 }
