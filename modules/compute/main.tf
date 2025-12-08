@@ -53,6 +53,12 @@ resource "aws_lb_target_group" "main" {
     unhealthy_threshold = 3
   }
 
+  stickiness {
+    type            = "lb_cookie"
+    cookie_duration = 86400
+    enabled         = true
+  }
+
   lifecycle {
     create_before_destroy = true
   }
