@@ -1,11 +1,11 @@
 # Data sources
 data "aws_ami" "ubuntu" {
   most_recent = true
-  owners      = ["099720109477"] # Canonical
+  owners      = ["099720109477"]
 
   filter {
     name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-*-amd64-server-*"]
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
   }
 
   filter {
@@ -36,10 +36,10 @@ resource "aws_lb" "main" {
 
 # Target Group
 resource "aws_lb_target_group" "main" {
-  name     = "${var.project_name}-tg-${formatdate("MMDDhhmm", timestamp())}"
-  port     = 5000
-  protocol = "HTTP"
-  vpc_id   = var.vpc_id
+  name_prefix = "awstg-"
+  port        = 5000
+  protocol    = "HTTP"
+  vpc_id      = var.vpc_id
 
   health_check {
     enabled             = true

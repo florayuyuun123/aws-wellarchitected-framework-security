@@ -1,7 +1,6 @@
 // Status Check Functionality
 class StatusChecker {
     constructor() {
-        this.companies = JSON.parse(localStorage.getItem('companies') || '[]');
         this.init();
     }
 
@@ -17,39 +16,47 @@ class StatusChecker {
         }
     }
 
-    checkStatus(e) {
+    async checkStatus(e) {
         e.preventDefault();
         
-        const regNumber = document.getElementById('searchRegNumber').value;
-        const company = this.companies.find(c => c.id === regNumber || c.registrationNumber === regNumber);
-        
+        const regNumber = document.getElementById('searchRegNumber').value.trim();
         const resultDiv = document.getElementById('statusResult');
         
-        if (!company) {
-            alert('Registration number not found!');
+        try {
+            const response = await fetch(`${API_CONFIG.BASE_URL}/api/companies/${regNumber}`);
+            
+            if (!response.ok) {
+                alert('Registration not found!');
+                resultDiv.style.display = 'none';
+                return;
+            }
+            
+            const company = await response.json();
+            
+            // Display company information
+            document.getElementById('statusCompanyName').textContent = company.companyName;
+            document.getElementById('statusRegNumber').textContent = company.registrationNumber;
+            document.getElementById('statusDate').textContent = new Date(company.submittedDate).toLocaleDateString();
+            
+            const statusSpan = document.getElementById('statusValue');
+            statusSpan.textContent = company.status.toUpperCase();
+            statusSpan.className = `status-badge status-${company.status}`;
+            
+            // Show download button if approved
+            const downloadDiv = document.getElementById('certificateDownload');
+            if (company.status === 'approved') {
+                downloadDiv.style.display = 'block';
+                this.currentCompany = company;
+            } else {
+                downloadDiv.style.display = 'none';
+            }
+            
+            resultDiv.style.display = 'block';
+        } catch (error) {
+            console.error('Error checking status:', error);
+            alert('Error checking status. Please try again.');
             resultDiv.style.display = 'none';
-            return;
         }
-
-        // Display company information
-        document.getElementById('statusCompanyName').textContent = company.companyName;
-        document.getElementById('statusRegNumber').textContent = company.registrationNumber;
-        document.getElementById('statusDate').textContent = new Date(company.submittedDate).toLocaleDateString();
-        
-        const statusSpan = document.getElementById('statusValue');
-        statusSpan.textContent = company.status;
-        statusSpan.className = `status-badge status-${company.status}`;
-        
-        // Show download button if approved
-        const downloadDiv = document.getElementById('certificateDownload');
-        if (company.status === 'approved') {
-            downloadDiv.style.display = 'block';
-            this.currentCompany = company;
-        } else {
-            downloadDiv.style.display = 'none';
-        }
-        
-        resultDiv.style.display = 'block';
     }
 
     downloadCertificate() {

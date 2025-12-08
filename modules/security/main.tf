@@ -100,3 +100,20 @@ resource "aws_security_group" "rds" {
     Name = "${var.project_name}-${var.environment}-rds-sg"
   }
 }
+
+# EFS Security Group
+resource "aws_security_group" "efs" {
+  name_prefix = "${var.project_name}-${var.environment}-efs"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    from_port       = 2049
+    to_port         = 2049
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ec2.id]
+  }
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-efs-sg"
+  }
+}

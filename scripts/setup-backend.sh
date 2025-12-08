@@ -16,10 +16,25 @@ import urllib.parse
 from datetime import datetime
 import os
 import uuid
+import sqlite3
 
 PORT = 5000
+DB_PATH = '/opt/app/companies.db'
 sessions = {}
-companies = []
+
+# Initialize database
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS companies
+                 (id TEXT PRIMARY KEY, companyName TEXT, registrationNumber TEXT,
+                  businessType TEXT, address TEXT, contactPerson TEXT,
+                  email TEXT, phone TEXT, submittedDate TEXT,
+                  status TEXT, approvedDate TEXT)''')
+    conn.commit()
+    conn.close()
+
+init_db()
 
 class AdminHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
@@ -56,14 +71,30 @@ class AdminHandler(http.server.SimpleHTTPRequestHandler):
         
         elif parsed.path.startswith('/api/companies/'):
             search_term = parsed.path.split('/')[-1]
-            # Search by ID or registration number
-            company = next((c for c in companies if c['id'] == search_term or c.get('registrationNumber') == search_term), None)
-            if company:
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            c.execute('SELECT * FROM companies WHERE id=? OR registrationNumber=?', (search_term, search_term))
+            row = c.fetchone()
+            conn.close()
+            if row:
+                company = {'id': row[0], 'companyName': row[1], 'registrationNumber': row[2],
+                          'businessType': row[3], 'address': row[4], 'contactPerson': row[5],
+                          'email': row[6], 'phone': row[7], 'submittedDate': row[8],
+                          'status': row[9], 'approvedDate': row[10]}
                 self.send_json(company)
             else:
                 self.send_json({'error': 'Not found'}, 404)
         
         elif parsed.path == '/api/admin/companies':
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            c.execute('SELECT * FROM companies')
+            rows = c.fetchall()
+            conn.close()
+            companies = [{'id': r[0], 'companyName': r[1], 'registrationNumber': r[2],
+                         'businessType': r[3], 'address': r[4], 'contactPerson': r[5],
+                         'email': r[6], 'phone': r[7], 'submittedDate': r[8],
+                         'status': r[9], 'approvedDate': r[10]} for r in rows]
             self.send_json({'companies': companies})
         
         else:
@@ -90,8 +121,15 @@ class AdminHandler(http.server.SimpleHTTPRequestHandler):
             content_length = int(self.headers['Content-Length'])
             body = self.rfile.read(content_length)
             company = json.loads(body.decode('utf-8'))
-            company['status'] = 'pending'
-            companies.append(company)
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            c.execute('''INSERT INTO companies VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
+                     (company['id'], company['companyName'], company['registrationNumber'],
+                      company['businessType'], company['address'], company['contactPerson'],
+                      company['email'], company['phone'], company['submittedDate'],
+                      'pending', None))
+            conn.commit()
+            conn.close()
             self.send_json({'success': True, 'id': company['id']}, 201)
         
         else:
@@ -100,17 +138,21 @@ class AdminHandler(http.server.SimpleHTTPRequestHandler):
     def do_PUT(self):
         if '/approve' in self.path:
             company_id = self.path.split('/')[-2]
-            company = next((c for c in companies if c['id'] == company_id), None)
-            if company:
-                company['status'] = 'approved'
-                company['approvedDate'] = datetime.now().isoformat()
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            c.execute('UPDATE companies SET status=?, approvedDate=? WHERE id=?',
+                     ('approved', datetime.now().isoformat(), company_id))
+            conn.commit()
+            conn.close()
             self.send_json({'success': True})
         
         elif '/reject' in self.path:
             company_id = self.path.split('/')[-2]
-            company = next((c for c in companies if c['id'] == company_id), None)
-            if company:
-                company['status'] = 'rejected'
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            c.execute('UPDATE companies SET status=? WHERE id=?', ('rejected', company_id))
+            conn.commit()
+            conn.close()
             self.send_json({'success': True})
         
         else:
@@ -160,9 +202,9 @@ DASHBOARD_HTML = '''<!DOCTYPE html>
 <h2>Approved Registrations</h2><div id="approvedRegistrations" class="registrations-list">
 <p>Loading...</p></div></div></div>
 <script>
-async function loadCompanies(){try{const res=await fetch('/api/admin/companies');const data=await res.json();const pending=data.companies.filter(c=>c.status==='pending');const approved=data.companies.filter(c=>c.status==='approved');document.getElementById('pendingRegistrations').innerHTML=pending.length?pending.map(c=>`<div class="company-card"><h3>${c.companyName}</h3><p><strong>Reg #:</strong> ${c.registrationNumber}</p><p><strong>Type:</strong> ${c.businessType}</p><p><strong>Contact:</strong> ${c.contactPerson}</p><p><strong>Email:</strong> ${c.email}</p><button class="approve" onclick="approve('${c.id}')">Approve</button><button class="reject" onclick="reject('${c.id}')">Reject</button></div>`).join(''):'<p>No pending registrations</p>';document.getElementById('approvedRegistrations').innerHTML=approved.length?approved.map(c=>`<div class="company-card"><h3>${c.companyName}</h3><p><strong>Reg #:</strong> ${c.registrationNumber}</p><p><strong>Approved:</strong> ${new Date(c.approvedDate).toLocaleDateString()}</p></div>`).join(''):'<p>No approved registrations</p>'}catch(e){console.error(e)}}
-async function approve(id){await fetch(`/api/admin/companies/${id}/approve`,{method:'PUT'});loadCompanies()}
-async function reject(id){await fetch(`/api/admin/companies/${id}/reject`,{method:'PUT'});loadCompanies()}
+async function loadCompanies(){try{const res=await fetch('/api/admin/companies');const data=await res.json();const pending=data.companies.filter(c=>c.status==='pending');const approved=data.companies.filter(c=>c.status==='approved');document.getElementById('pendingRegistrations').innerHTML=pending.length?pending.map(c=>`<div class="company-card"><h3>$${c.companyName}</h3><p><strong>Reg #:</strong> $${c.registrationNumber}</p><p><strong>Type:</strong> $${c.businessType}</p><p><strong>Contact:</strong> $${c.contactPerson}</p><p><strong>Email:</strong> $${c.email}</p><button class="approve" onclick="approve('$${c.id}')">Approve</button><button class="reject" onclick="reject('$${c.id}')">Reject</button></div>`).join(''):'<p>No pending registrations</p>';document.getElementById('approvedRegistrations').innerHTML=approved.length?approved.map(c=>`<div class="company-card"><h3>$${c.companyName}</h3><p><strong>Reg #:</strong> $${c.registrationNumber}</p><p><strong>Approved:</strong> $${new Date(c.approvedDate).toLocaleDateString()}</p></div>`).join(''):'<p>No approved registrations</p>'}catch(e){console.error(e)}}
+async function approve(id){await fetch(`/api/admin/companies/$${id}/approve`,{method:'PUT'});loadCompanies()}
+async function reject(id){await fetch(`/api/admin/companies/$${id}/reject`,{method:'PUT'});loadCompanies()}
 loadCompanies();
 </script></body></html>'''
 
