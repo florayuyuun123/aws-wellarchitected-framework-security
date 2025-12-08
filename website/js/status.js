@@ -21,7 +21,7 @@ class StatusChecker {
         e.preventDefault();
         
         const regNumber = document.getElementById('searchRegNumber').value;
-        const company = this.companies.find(c => c.registrationNumber === regNumber);
+        const company = this.companies.find(c => c.id === regNumber || c.registrationNumber === regNumber);
         
         const resultDiv = document.getElementById('statusResult');
         

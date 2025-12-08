@@ -1,7 +1,7 @@
 // Admin Dashboard Functionality
 class AdminDashboard {
     constructor() {
-        this.companies = JSON.parse(localStorage.getItem('companies') || '[]');
+        this.companies = [];
         this.init();
     }
 
@@ -15,7 +15,16 @@ class AdminDashboard {
         this.loadRegistrations();
     }
 
-    loadRegistrations() {
+    async loadRegistrations() {
+        try {
+            const response = await fetch(`${API_CONFIG.BASE_URL}/api/admin/companies`);
+            const data = await response.json();
+            this.companies = data.companies || [];
+        } catch (error) {
+            console.warn('API not available, using localStorage fallback');
+            this.companies = JSON.parse(localStorage.getItem('companies') || '[]');
+        }
+        
         const pendingDiv = document.getElementById('pendingRegistrations');
         const approvedDiv = document.getElementById('approvedRegistrations');
         
@@ -57,24 +66,52 @@ class AdminDashboard {
         `;
     }
 
-    approveRegistration(id) {
+    async approveRegistration(id) {
         const company = this.companies.find(c => c.id === id);
         if (company) {
-            company.status = 'approved';
-            company.approvedDate = new Date().toISOString();
-            localStorage.setItem('companies', JSON.stringify(this.companies));
-            this.loadRegistrations();
-            alert(`${company.companyName} has been approved!`);
+            try {
+                const response = await fetch(`${API_CONFIG.BASE_URL}/api/admin/companies/${id}/approve`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                if (response.ok) {
+                    alert(`${company.companyName} has been approved!`);
+                    this.loadRegistrations();
+                } else {
+                    alert('Failed to approve registration');
+                }
+            } catch (error) {
+                console.warn('API not available, using localStorage fallback');
+                company.status = 'approved';
+                company.approvedDate = new Date().toISOString();
+                localStorage.setItem('companies', JSON.stringify(this.companies));
+                this.loadRegistrations();
+                alert(`${company.companyName} has been approved!`);
+            }
         }
     }
 
-    rejectRegistration(id) {
+    async rejectRegistration(id) {
         const company = this.companies.find(c => c.id === id);
         if (company && confirm(`Are you sure you want to reject ${company.companyName}?`)) {
-            company.status = 'rejected';
-            localStorage.setItem('companies', JSON.stringify(this.companies));
-            this.loadRegistrations();
-            alert(`${company.companyName} has been rejected!`);
+            try {
+                const response = await fetch(`${API_CONFIG.BASE_URL}/api/admin/companies/${id}/reject`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                if (response.ok) {
+                    alert(`${company.companyName} has been rejected!`);
+                    this.loadRegistrations();
+                } else {
+                    alert('Failed to reject registration');
+                }
+            } catch (error) {
+                console.warn('API not available, using localStorage fallback');
+                company.status = 'rejected';
+                localStorage.setItem('companies', JSON.stringify(this.companies));
+                this.loadRegistrations();
+                alert(`${company.companyName} has been rejected!`);
+            }
         }
     }
 }
