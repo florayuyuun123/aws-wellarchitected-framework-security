@@ -55,8 +55,9 @@ class AdminHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json({'authenticated': authenticated})
         
         elif parsed.path.startswith('/api/companies/'):
-            company_id = parsed.path.split('/')[-1]
-            company = next((c for c in companies if c['id'] == company_id), None)
+            search_term = parsed.path.split('/')[-1]
+            # Search by ID or registration number
+            company = next((c for c in companies if c['id'] == search_term or c.get('registrationNumber') == search_term), None)
             if company:
                 self.send_json(company)
             else:
@@ -152,12 +153,18 @@ LOGIN_HTML = '''<!DOCTYPE html>
 
 DASHBOARD_HTML = '''<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Admin Dashboard</title>
-<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;background:#f4f4f4}header{background:#007bff;color:white;padding:20px;display:flex;justify-content:space-between;align-items:center}header h1{font-size:24px}header a{color:white;text-decoration:none;padding:8px 16px;background:rgba(255,255,255,0.2);border-radius:4px}header a:hover{background:rgba(255,255,255,0.3)}.container{max-width:1200px;margin:30px auto;padding:0 20px}.dashboard{background:white;padding:30px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}h2{color:#333;margin-bottom:20px}.registrations-list{margin-bottom:40px}.company-card{background:#f9f9f9;padding:15px;margin-bottom:10px;border-radius:4px;border-left:4px solid #007bff}.company-card h3{color:#333;margin-bottom:10px}.company-card p{color:#666;margin:5px 0}</style>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;background:#f4f4f4}header{background:#007bff;color:white;padding:20px;display:flex;justify-content:space-between;align-items:center}header h1{font-size:24px}header a{color:white;text-decoration:none;padding:8px 16px;background:rgba(255,255,255,0.2);border-radius:4px}header a:hover{background:rgba(255,255,255,0.3)}.container{max-width:1200px;margin:30px auto;padding:0 20px}.dashboard{background:white;padding:30px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}h2{color:#333;margin-bottom:20px}.registrations-list{margin-bottom:40px}.company-card{background:#f9f9f9;padding:15px;margin-bottom:10px;border-radius:4px;border-left:4px solid #007bff}.company-card h3{color:#333;margin-bottom:10px}.company-card p{color:#666;margin:5px 0}button{padding:8px 16px;margin:5px;border:none;border-radius:4px;cursor:pointer}.approve{background:#28a745;color:white}.reject{background:#dc3545;color:white}</style>
 </head><body><header><h1>Admin Dashboard</h1><a href="/admin/logout">Logout</a></header>
 <div class="container"><div class="dashboard"><h2>Pending Registrations</h2>
-<div id="pendingRegistrations" class="registrations-list"><p>No pending registrations</p></div>
+<div id="pendingRegistrations" class="registrations-list"><p>Loading...</p></div>
 <h2>Approved Registrations</h2><div id="approvedRegistrations" class="registrations-list">
-<p>No approved registrations</p></div></div></div></body></html>'''
+<p>Loading...</p></div></div></div>
+<script>
+async function loadCompanies(){try{const res=await fetch('/api/admin/companies');const data=await res.json();const pending=data.companies.filter(c=>c.status==='pending');const approved=data.companies.filter(c=>c.status==='approved');document.getElementById('pendingRegistrations').innerHTML=pending.length?pending.map(c=>`<div class="company-card"><h3>${c.companyName}</h3><p><strong>Reg #:</strong> ${c.registrationNumber}</p><p><strong>Type:</strong> ${c.businessType}</p><p><strong>Contact:</strong> ${c.contactPerson}</p><p><strong>Email:</strong> ${c.email}</p><button class="approve" onclick="approve('${c.id}')">Approve</button><button class="reject" onclick="reject('${c.id}')">Reject</button></div>`).join(''):'<p>No pending registrations</p>';document.getElementById('approvedRegistrations').innerHTML=approved.length?approved.map(c=>`<div class="company-card"><h3>${c.companyName}</h3><p><strong>Reg #:</strong> ${c.registrationNumber}</p><p><strong>Approved:</strong> ${new Date(c.approvedDate).toLocaleDateString()}</p></div>`).join(''):'<p>No approved registrations</p>'}catch(e){console.error(e)}}
+async function approve(id){await fetch(`/api/admin/companies/${id}/approve`,{method:'PUT'});loadCompanies()}
+async function reject(id){await fetch(`/api/admin/companies/${id}/reject`,{method:'PUT'});loadCompanies()}
+loadCompanies();
+</script></body></html>'''
 
 if __name__ == '__main__':
     with socketserver.TCPServer(("", PORT), AdminHandler) as httpd:
