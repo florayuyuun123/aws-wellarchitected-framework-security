@@ -1,162 +1,202 @@
 #!/bin/bash
-exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
-echo "Starting user data script at $(date)"
+apt update -y
+apt install -y python3 python3-pip awscli
 
-# Install packages that are available in the base AMI
-apt update -y || echo "Package update failed, using cached packages"
-apt install -y python3 python3-pip awscli curl || echo "Some packages may not be available"
+# Install SSM Agent
+snap install amazon-ssm-agent --classic
+systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
+systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
 
-# Install SSM Agent (usually pre-installed in Ubuntu AMIs)
-systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service 2>/dev/null || echo "SSM agent may already be configured"
-systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service 2>/dev/null || echo "SSM agent may already be running"
+# Wait for bastion to generate and upload SSH key
+sleep 60
 
-# Wait for bastion to generate and upload SSH key with retry logic
-echo "Waiting for bastion key generation..."
-for i in {1..10}; do
-  echo "Attempt $i: Retrieving bastion public key..."
-  BAST_PUB_KEY=$(aws ssm get-parameter --name "/aws-sec-pillar/bastion-public-key" --query "Parameter.Value" --output text --region us-east-1 2>/dev/null)
-  if [ -n "$BAST_PUB_KEY" ] && [ "$BAST_PUB_KEY" != "None" ]; then
-    echo "$BAST_PUB_KEY" >> /home/ubuntu/.ssh/authorized_keys
-    chmod 600 /home/ubuntu/.ssh/authorized_keys
-    chown ubuntu:ubuntu /home/ubuntu/.ssh/authorized_keys
-    echo "Bastion key added successfully"
-    break
-  else
-    echo "Key not ready, waiting 30 seconds..."
-    sleep 30
-  fi
-done
+# Retrieve bastion public key from SSM and add to authorized_keys
+BAST_PUB_KEY=$(aws ssm get-parameter --name "/aws-sec-pillar/bastion-public-key" --query "Parameter.Value" --output text --region us-east-1 2>/dev/null)
+if [ -n "$BAST_PUB_KEY" ]; then
+  echo "$BAST_PUB_KEY" >> /home/ubuntu/.ssh/authorized_keys
+  chmod 600 /home/ubuntu/.ssh/authorized_keys
+  chown ubuntu:ubuntu /home/ubuntu/.ssh/authorized_keys
+fi
 
-# Create backend app
-echo "Creating Flask application..."
-mkdir -p /opt/app
+# Create backend app structure
+mkdir -p /opt/app/templates/admin
+mkdir -p /opt/app/static/{css,js}
 cd /opt/app
 
+# Install Flask
+pip3 install Flask==2.3.3
+
+# Create Flask app with admin routes
 cat > app.py << 'PYTHON'
-import http.server
-import socketserver
-import json
-from datetime import datetime
+from flask import Flask, jsonify, render_template, request, session, redirect, url_for
+import os
 
-# In-memory storage
-companies = []
+app = Flask(__name__)
+app.secret_key = os.urandom(24)
 
-class APIHandler(http.server.BaseHTTPRequestHandler):
-    def _send_cors_headers(self):
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+# Health check
+@app.route('/health')
+def health():
+    return jsonify({'status': 'healthy'})
+
+# API endpoints
+@app.route('/api/companies/<company_id>')
+def get_company(company_id):
+    return jsonify({'id': company_id, 'status': 'active'})
+
+# Admin login
+@app.route('/admin/login', methods=['GET', 'POST'])
+def admin_login():
+    if request.method == 'POST':
+        data = request.get_json()
+        username = data.get('username')
+        password = data.get('password')
+        
+        if username == 'admin' and password == 'admin123':
+            session['admin'] = True
+            session['username'] = username
+            return jsonify({'success': True})
+        return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
     
-    def do_OPTIONS(self):
-        self.send_response(200)
-        self._send_cors_headers()
-        self.end_headers()
-    
-    def do_GET(self):
-        if self.path == '/health':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self._send_cors_headers()
-            self.end_headers()
-            response = json.dumps({'status': 'healthy'})
-            self.wfile.write(response.encode())
-        elif self.path == '/api/companies':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self._send_cors_headers()
-            self.end_headers()
-            response = json.dumps({'companies': companies})
-            self.wfile.write(response.encode())
-        elif self.path.startswith('/api/companies/') and len(self.path.split('/')) == 4:
-            reg_number = self.path.split('/')[-1]
-            company = next((c for c in companies if c['registrationNumber'] == reg_number), None)
-            self.send_response(200 if company else 404)
-            self.send_header('Content-type', 'application/json')
-            self._send_cors_headers()
-            self.end_headers()
-            response = json.dumps(company if company else {'error': 'Not found'})
-            self.wfile.write(response.encode())
-        elif self.path == '/api/admin/companies':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self._send_cors_headers()
-            self.end_headers()
-            response = json.dumps({'companies': companies})
-            self.wfile.write(response.encode())
-        else:
-            self.send_response(404)
-            self._send_cors_headers()
-            self.end_headers()
-    
-    def do_POST(self):
-        if self.path == '/api/companies':
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
-            try:
-                company_data = json.loads(post_data.decode('utf-8'))
-                company_data['status'] = 'pending'
-                companies.append(company_data)
-                self.send_response(201)
-                self.send_header('Content-type', 'application/json')
-                self._send_cors_headers()
-                self.end_headers()
-                response = json.dumps({'success': True, 'id': company_data['id']})
-                self.wfile.write(response.encode())
-            except:
-                self.send_response(400)
-                self._send_cors_headers()
-                self.end_headers()
-        else:
-            self.send_response(404)
-            self._send_cors_headers()
-            self.end_headers()
-    
-    def do_PUT(self):
-        if '/approve' in self.path:
-            company_id = self.path.split('/')[-2]
-            company = next((c for c in companies if c['id'] == company_id), None)
-            if company:
-                company['status'] = 'approved'
-                company['approvedDate'] = datetime.now().isoformat()
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self._send_cors_headers()
-            self.end_headers()
-            response = json.dumps({'success': True})
-            self.wfile.write(response.encode())
-        elif '/reject' in self.path:
-            company_id = self.path.split('/')[-2]
-            company = next((c for c in companies if c['id'] == company_id), None)
-            if company:
-                company['status'] = 'rejected'
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self._send_cors_headers()
-            self.end_headers()
-            response = json.dumps({'success': True})
-            self.wfile.write(response.encode())
-        else:
-            self.send_response(404)
-            self._send_cors_headers()
-            self.end_headers()
-    
-    def log_message(self, format, *args):
-        print(f"{datetime.now().isoformat()} - {format % args}")
+    return render_template('admin/login.html')
+
+# Admin dashboard
+@app.route('/admin/dashboard')
+def admin_dashboard():
+    if 'admin' not in session:
+        return redirect(url_for('admin_login'))
+    return render_template('admin/dashboard.html')
+
+# Admin logout
+@app.route('/admin/logout')
+def admin_logout():
+    session.pop('admin', None)
+    session.pop('username', None)
+    return redirect(url_for('admin_login'))
+
+# Check session
+@app.route('/admin/check-session')
+def check_session():
+    return jsonify({'authenticated': 'admin' in session})
 
 if __name__ == '__main__':
-    PORT = 5000
-    with socketserver.TCPServer(("", PORT), APIHandler) as httpd:
-        print(f"Starting API server on port {PORT}")
-        httpd.serve_forever()
+    app.run(host='0.0.0.0', port=5000)
 PYTHON
 
-echo "Python HTTP server created (no external dependencies needed)"
+# Create admin login template
+cat > templates/admin/login.html << 'HTML'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: #f4f4f4; padding: 20px; }
+        .container { max-width: 400px; margin: 100px auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #333; margin-bottom: 30px; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 5px; color: #555; }
+        input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
+        button { width: 100%; padding: 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        button:hover { background: #0056b3; }
+        .error { color: red; margin-top: 10px; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Admin Login</h1>
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" required>
+            </div>
+            <button type="submit">Login</button>
+            <div id="error" class="error"></div>
+        </form>
+    </div>
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                const response = await fetch('/admin/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    window.location.href = '/admin/dashboard';
+                } else {
+                    document.getElementById('error').textContent = 'Invalid credentials';
+                }
+            } catch (error) {
+                document.getElementById('error').textContent = 'Login failed';
+            }
+        });
+    </script>
+</body>
+</html>
+HTML
 
-# Create systemd service for Python HTTP server
-echo "Creating systemd service..."
-cat > /etc/systemd/system/backend-app.service << 'SERVICE'
+# Create admin dashboard template
+cat > templates/admin/dashboard.html << 'HTML'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: #f4f4f4; }
+        header { background: #007bff; color: white; padding: 20px; display: flex; justify-content: space-between; align-items: center; }
+        header h1 { font-size: 24px; }
+        header a { color: white; text-decoration: none; padding: 8px 16px; background: rgba(255,255,255,0.2); border-radius: 4px; }
+        header a:hover { background: rgba(255,255,255,0.3); }
+        .container { max-width: 1200px; margin: 30px auto; padding: 0 20px; }
+        .dashboard { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h2 { color: #333; margin-bottom: 20px; }
+        .registrations-list { margin-bottom: 40px; }
+        .company-card { background: #f9f9f9; padding: 15px; margin-bottom: 10px; border-radius: 4px; border-left: 4px solid #007bff; }
+        .company-card h3 { color: #333; margin-bottom: 10px; }
+        .company-card p { color: #666; margin: 5px 0; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Admin Dashboard</h1>
+        <a href="/admin/logout">Logout</a>
+    </header>
+    <div class="container">
+        <div class="dashboard">
+            <h2>Pending Registrations</h2>
+            <div id="pendingRegistrations" class="registrations-list">
+                <p>No pending registrations</p>
+            </div>
+            <h2>Approved Registrations</h2>
+            <div id="approvedRegistrations" class="registrations-list">
+                <p>No approved registrations</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+HTML
+
+# Create systemd service
+cat > /etc/systemd/system/flask-app.service << 'SERVICE'
 [Unit]
-Description=Backend HTTP Server
+Description=Flask Backend App
 After=network.target
 
 [Service]
@@ -166,25 +206,12 @@ WorkingDirectory=/opt/app
 ExecStart=/usr/bin/python3 /opt/app/app.py
 Restart=always
 RestartSec=3
-Environment=PYTHONUNBUFFERED=1
 
 [Install]
 WantedBy=multi-user.target
 SERVICE
 
-# Enable and start the service
-echo "Starting backend service..."
+# Enable and start service
 systemctl daemon-reload
-systemctl enable backend-app
-systemctl start backend-app
-
-# Wait a moment and check service status
-sleep 5
-systemctl status backend-app --no-pager
-
-# Test the health endpoint locally
-echo "Testing health endpoint..."
-sleep 10
-curl -f http://localhost:5000/health || echo "Health check failed"
-
-echo "User data script completed at $(date)"
+systemctl enable flask-app
+systemctl start flask-app
