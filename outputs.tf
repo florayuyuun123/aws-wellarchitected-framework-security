@@ -5,7 +5,12 @@ output "vpc_id" {
 
 output "alb_dns_name" {
   description = "ALB DNS name"
-  value       = module.compute.alb_dns_name
+  value       = module.alb.alb_dns_name
+}
+
+output "target_group_arn" {
+  description = "ALB Target Group ARN"
+  value       = module.alb.target_group_arn
 }
 
 output "bastion_public_ip" {
@@ -29,8 +34,12 @@ output "website_url" {
   value       = "http://${module.storage.website_url}"
 }
 
-output "target_group_arn" {
-  description = "ALB Target Group ARN"
-  value       = module.compute.target_group_arn
+output "ecr_repository_url" {
+  description = "ECR Repository URL"
+  value       = module.ecr.repository_url
 }
 
+output "ecs_cluster_name" {
+  description = "ECS Cluster Name"
+  value       = module.ecs.cluster_name
+}

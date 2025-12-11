@@ -1,7 +1,21 @@
 # Data sources
+# ECS Optimized AMI
+data "aws_ami" "ecs_optimized" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["al2023-ami-ecs-hvm-*-x86_64"]
+  }
+}
+
+data "aws_region" "current" {}
+
+# Ubuntu AMI for Bastion
 data "aws_ami" "ubuntu" {
   most_recent = true
-  owners      = ["099720109477"]
+  owners      = ["099720109477"] # Canonical
 
   filter {
     name   = "name"
@@ -9,8 +23,8 @@ data "aws_ami" "ubuntu" {
   }
 
   filter {
-    name   = "state"
-    values = ["available"]
+    name   = "virtualization-type"
+    values = ["hvm"]
   }
 }
 
@@ -19,74 +33,9 @@ data "aws_key_pair" "main" {
   key_name = "argo-key-pair"
 }
 
-# Application Load Balancer
-resource "aws_lb" "main" {
-  name               = "${var.project_name}-${var.environment}-alb"
-  internal           = false
-  load_balancer_type = "application"
-  security_groups    = [var.alb_security_group]
-  subnets            = var.public_subnet_ids
-
-  enable_deletion_protection = false
-
-  tags = {
-    Name = "${var.project_name}-${var.environment}-alb"
-  }
-}
-
-# Target Group
-resource "aws_lb_target_group" "main" {
-  name_prefix = "awstg-"
-  port        = 5000
-  protocol    = "HTTP"
-  vpc_id      = var.vpc_id
-
-  health_check {
-    enabled             = true
-    healthy_threshold   = 2
-    interval            = 30
-    matcher             = "200"
-    path                = "/health"
-    port                = "5000"
-    protocol            = "HTTP"
-    timeout             = 5
-    unhealthy_threshold = 3
-  }
-
-  stickiness {
-    type            = "lb_cookie"
-    cookie_duration = 86400
-    enabled         = true
-  }
-
-  lifecycle {
-    create_before_destroy = true
-  }
-
-  tags = {
-    Name = "${var.project_name}-${var.environment}-tg"
-  }
-}
-
-# ALB Listener - HTTP
-resource "aws_lb_listener" "main" {
-  load_balancer_arn = aws_lb.main.arn
-  port              = "80"
-  protocol          = "HTTP"
-
-  default_action {
-    type = "forward"
-    forward {
-      target_group {
-        arn = aws_lb_target_group.main.arn
-      }
-    }
-  }
-}
-
-# IAM Role for EC2 SSM
-resource "aws_iam_role" "ec2_ssm_role" {
-  name = "${var.project_name}-${var.environment}-ec2-ssm-role"
+# IAM Role for ECS Container Instance
+resource "aws_iam_role" "ecs_instance_role" {
+  name = "${var.project_name}-${var.environment}-ecs-instance-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -102,50 +51,39 @@ resource "aws_iam_role" "ec2_ssm_role" {
   })
 }
 
+resource "aws_iam_role_policy_attachment" "ecs_instance_role_policy" {
+  role       = aws_iam_role.ecs_instance_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
+}
+
 resource "aws_iam_role_policy_attachment" "ssm_managed_instance_core" {
-  role       = aws_iam_role.ec2_ssm_role.name
+  role       = aws_iam_role.ecs_instance_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
-# IAM policy for SSM Parameter Store access
-resource "aws_iam_role_policy" "ssm_parameter_access" {
-  name = "${var.project_name}-${var.environment}-ssm-params"
-  role = aws_iam_role.ec2_ssm_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "ssm:GetParameter",
-          "ssm:PutParameter"
-        ]
-        Resource = "arn:aws:ssm:*:*:parameter/aws-sec-pillar/*"
-      }
-    ]
-  })
-}
-
-resource "aws_iam_instance_profile" "ec2_profile" {
-  name = "${var.project_name}-${var.environment}-ec2-profile"
-  role = aws_iam_role.ec2_ssm_role.name
+resource "aws_iam_instance_profile" "ecs_instance_profile" {
+  name = "${var.project_name}-${var.environment}-ecs-instance-profile"
+  role = aws_iam_role.ecs_instance_role.name
 }
 
 # Launch Template
 resource "aws_launch_template" "main" {
-  name_prefix   = "${var.project_name}-${var.environment}-${formatdate("YYYYMMDD-hhmm", timestamp())}-"
-  image_id      = data.aws_ami.ubuntu.id
+  name_prefix   = "${var.project_name}-${var.environment}-ecs-"
+  image_id      = data.aws_ami.ecs_optimized.id
   instance_type = "t3.micro"
   key_name      = data.aws_key_pair.main.key_name
 
   vpc_security_group_ids = [var.ec2_security_group]
   
   iam_instance_profile {
-    name = aws_iam_instance_profile.ec2_profile.name
+    name = aws_iam_instance_profile.ecs_instance_profile.name
   }
 
-  user_data = base64encode(file("${path.module}/../../scripts/setup-backend.sh"))
+  user_data = base64encode(<<EOF
+#!/bin/bash
+echo "ECS_CLUSTER=${var.ecs_cluster_name}" >> /etc/ecs/ecs.config
+EOF
+  )
 
   tag_specifications {
     resource_type = "instance"
@@ -159,7 +97,7 @@ resource "aws_launch_template" "main" {
 resource "aws_autoscaling_group" "main" {
   name                = "${var.project_name}-${var.environment}-asg"
   vpc_zone_identifier = var.private_subnet_ids
-  target_group_arns   = [aws_lb_target_group.main.arn]
+  # target_group_arns   = [aws_lb_target_group.main.arn] # Removed for ECS Cycle fix
   health_check_type   = "ELB"
   health_check_grace_period = 600
   min_size            = 1
@@ -192,7 +130,7 @@ resource "aws_instance" "bastion" {
   key_name               = data.aws_key_pair.main.key_name
   subnet_id              = var.public_subnet_ids[0]
   vpc_security_group_ids = [var.bastion_security_group]
-  iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
+  iam_instance_profile   = aws_iam_instance_profile.ecs_instance_profile.name
 
   user_data = base64encode(file("${path.module}/../../scripts/setup-bastion.sh"))
 

@@ -40,6 +40,33 @@ module "security" {
   vpc_cidr     = var.vpc_cidr
 }
 
+module "ecr" {
+  source = "./modules/ecr"
+
+  project_name = var.project_name
+  environment  = var.environment
+}
+
+module "alb" {
+  source = "./modules/alb"
+
+  project_name      = var.project_name
+  environment       = var.environment
+  vpc_id            = module.vpc.vpc_id
+  public_subnet_ids = module.vpc.public_subnet_ids
+  alb_security_group = module.security.alb_security_group_id
+}
+
+module "ecs" {
+  source = "./modules/ecs"
+
+  project_name     = var.project_name
+  environment      = var.environment
+  container_image  = "${module.ecr.repository_url}:latest"
+  db_host          = regex("([^:]+)", module.database.rds_endpoint)[0]
+  target_group_arn = module.alb.target_group_arn
+}
+
 module "compute" {
   source = "./modules/compute"
   
@@ -51,9 +78,9 @@ module "compute" {
   alb_security_group  = module.security.alb_security_group_id
   ec2_security_group  = module.security.ec2_security_group_id
   bastion_security_group = module.security.bastion_security_group_id
-  rds_endpoint        = module.database.rds_endpoint
+  ecs_cluster_name    = module.ecs.cluster_name
   
-  depends_on = [module.vpc, module.security, module.database]
+  depends_on = [module.vpc, module.security, module.database, module.ecs]
 }
 
 module "database" {
@@ -81,7 +108,7 @@ module "waf" {
   
   project_name = var.project_name
   environment  = var.environment
-  alb_arn      = module.compute.alb_arn
+  alb_arn      = module.alb.alb_arn
   
-  depends_on = [module.compute]
+  depends_on = [module.alb]
 }

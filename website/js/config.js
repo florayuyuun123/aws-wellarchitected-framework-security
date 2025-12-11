@@ -1,7 +1,7 @@
 // API Configuration
 const API_CONFIG = {
     // Replace with your ALB DNS name
-    BASE_URL: 'http://aws-sec-pillar-prod-alb-2145715132.us-east-1.elb.amazonaws.com',
+    BASE_URL: 'http://aws-sec-pillar-prod-alb-291906492.us-east-1.elb.amazonaws.com',
     ENDPOINTS: {
         REGISTER: '/api/companies',
         STATUS: '/api/companies',

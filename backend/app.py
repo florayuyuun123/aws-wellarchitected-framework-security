@@ -1,13 +1,3 @@
-#!/bin/bash
-set -e
-
-# Create backend app structure
-mkdir -p /opt/app/templates/admin
-mkdir -p /opt/app/static/{css,js}
-cd /opt/app
-
-# Create Python HTTP server with admin routes (no external dependencies)
-cat > app.py << 'PYTHON'
 #!/usr/bin/env python3
 import http.server
 import socketserver
@@ -16,24 +6,54 @@ import urllib.parse
 from datetime import datetime
 import os
 import uuid
-import sqlite3
+import pymysql
 
 PORT = 5000
-DB_PATH = '/opt/app/companies.db'
+DB_HOST = os.environ.get('DB_HOST', 'localhost')
+DB_USER = os.environ.get('DB_USER', 'admin')
+DB_PASS = os.environ.get('DB_PASS', 'changeme123!')
+DB_NAME = os.environ.get('DB_NAME', 'appdb')
 sessions = {}
 
 # Initialize database
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS companies
-                 (id TEXT PRIMARY KEY, companyName TEXT, registrationNumber TEXT,
-                  businessType TEXT, address TEXT, contactPerson TEXT,
-                  email TEXT, phone TEXT, submittedDate TEXT,
-                  status TEXT, approvedDate TEXT)''')
-    conn.commit()
-    conn.close()
+def get_db():
+    return pymysql.connect(
+        host=DB_HOST,
+        user=DB_USER,
+        password=DB_PASS,
+        database=DB_NAME,
+        cursorclass=pymysql.cursors.DictCursor
+    )
 
+def init_db():
+    import time
+    for i in range(30):
+        try:
+            conn = get_db()
+            with conn.cursor() as c:
+                c.execute('''CREATE TABLE IF NOT EXISTS companies (
+                    id VARCHAR(255) PRIMARY KEY,
+                    companyName VARCHAR(255),
+                    registrationNumber VARCHAR(255),
+                    businessType VARCHAR(255),
+                    address TEXT,
+                    contactPerson VARCHAR(255),
+                    email VARCHAR(255),
+                    phone VARCHAR(255),
+                    submittedDate VARCHAR(255),
+                    status VARCHAR(50),
+                    approvedDate VARCHAR(255)
+                )''')
+            conn.commit()
+            conn.close()
+            print('Database initialized')
+            return
+        except Exception as e:
+            print(f'DB init attempt {i+1} failed: {e}')
+            time.sleep(5)
+    print('Failed to initialize database after 30 attempts')
+
+# Run init_db on import/start
 init_db()
 
 class AdminHandler(http.server.SimpleHTTPRequestHandler):
@@ -71,30 +91,22 @@ class AdminHandler(http.server.SimpleHTTPRequestHandler):
         
         elif parsed.path.startswith('/api/companies/'):
             search_term = parsed.path.split('/')[-1]
-            conn = sqlite3.connect(DB_PATH)
-            c = conn.cursor()
-            c.execute('SELECT * FROM companies WHERE id=? OR registrationNumber=?', (search_term, search_term))
-            row = c.fetchone()
+            conn = get_db()
+            with conn.cursor() as c:
+                c.execute('SELECT * FROM companies WHERE id=%s OR registrationNumber=%s', (search_term, search_term))
+                company = c.fetchone()
             conn.close()
-            if row:
-                company = {'id': row[0], 'companyName': row[1], 'registrationNumber': row[2],
-                          'businessType': row[3], 'address': row[4], 'contactPerson': row[5],
-                          'email': row[6], 'phone': row[7], 'submittedDate': row[8],
-                          'status': row[9], 'approvedDate': row[10]}
+            if company:
                 self.send_json(company)
             else:
                 self.send_json({'error': 'Not found'}, 404)
         
         elif parsed.path == '/api/admin/companies':
-            conn = sqlite3.connect(DB_PATH)
-            c = conn.cursor()
-            c.execute('SELECT * FROM companies')
-            rows = c.fetchall()
+            conn = get_db()
+            with conn.cursor() as c:
+                c.execute('SELECT * FROM companies')
+                companies = c.fetchall()
             conn.close()
-            companies = [{'id': r[0], 'companyName': r[1], 'registrationNumber': r[2],
-                         'businessType': r[3], 'address': r[4], 'contactPerson': r[5],
-                         'email': r[6], 'phone': r[7], 'submittedDate': r[8],
-                         'status': r[9], 'approvedDate': r[10]} for r in rows]
             self.send_json({'companies': companies})
         
         else:
@@ -121,13 +133,13 @@ class AdminHandler(http.server.SimpleHTTPRequestHandler):
             content_length = int(self.headers['Content-Length'])
             body = self.rfile.read(content_length)
             company = json.loads(body.decode('utf-8'))
-            conn = sqlite3.connect(DB_PATH)
-            c = conn.cursor()
-            c.execute('''INSERT INTO companies VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
-                     (company['id'], company['companyName'], company['registrationNumber'],
-                      company['businessType'], company['address'], company['contactPerson'],
-                      company['email'], company['phone'], company['submittedDate'],
-                      'pending', None))
+            conn = get_db()
+            with conn.cursor() as c:
+                c.execute('''INSERT INTO companies VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
+                         (company['id'], company['companyName'], company['registrationNumber'],
+                          company['businessType'], company['address'], company['contactPerson'],
+                          company['email'], company['phone'], company['submittedDate'],
+                          'pending', None))
             conn.commit()
             conn.close()
             self.send_json({'success': True, 'id': company['id']}, 201)
@@ -138,19 +150,19 @@ class AdminHandler(http.server.SimpleHTTPRequestHandler):
     def do_PUT(self):
         if '/approve' in self.path:
             company_id = self.path.split('/')[-2]
-            conn = sqlite3.connect(DB_PATH)
-            c = conn.cursor()
-            c.execute('UPDATE companies SET status=?, approvedDate=? WHERE id=?',
-                     ('approved', datetime.now().isoformat(), company_id))
+            conn = get_db()
+            with conn.cursor() as c:
+                c.execute('UPDATE companies SET status=%s, approvedDate=%s WHERE id=%s',
+                         ('approved', datetime.now().isoformat(), company_id))
             conn.commit()
             conn.close()
             self.send_json({'success': True})
         
         elif '/reject' in self.path:
             company_id = self.path.split('/')[-2]
-            conn = sqlite3.connect(DB_PATH)
-            c = conn.cursor()
-            c.execute('UPDATE companies SET status=? WHERE id=?', ('rejected', company_id))
+            conn = get_db()
+            with conn.cursor() as c:
+                c.execute('UPDATE companies SET status=%s WHERE id=%s', ('rejected', company_id))
             conn.commit()
             conn.close()
             self.send_json({'success': True})
@@ -202,9 +214,9 @@ DASHBOARD_HTML = '''<!DOCTYPE html>
 <h2>Approved Registrations</h2><div id="approvedRegistrations" class="registrations-list">
 <p>Loading...</p></div></div></div>
 <script>
-async function loadCompanies(){try{const res=await fetch('/api/admin/companies');const data=await res.json();const pending=data.companies.filter(c=>c.status==='pending');const approved=data.companies.filter(c=>c.status==='approved');document.getElementById('pendingRegistrations').innerHTML=pending.length?pending.map(c=>`<div class="company-card"><h3>$${c.companyName}</h3><p><strong>Reg #:</strong> $${c.registrationNumber}</p><p><strong>Type:</strong> $${c.businessType}</p><p><strong>Contact:</strong> $${c.contactPerson}</p><p><strong>Email:</strong> $${c.email}</p><button class="approve" onclick="approve('$${c.id}')">Approve</button><button class="reject" onclick="reject('$${c.id}')">Reject</button></div>`).join(''):'<p>No pending registrations</p>';document.getElementById('approvedRegistrations').innerHTML=approved.length?approved.map(c=>`<div class="company-card"><h3>$${c.companyName}</h3><p><strong>Reg #:</strong> $${c.registrationNumber}</p><p><strong>Approved:</strong> $${new Date(c.approvedDate).toLocaleDateString()}</p></div>`).join(''):'<p>No approved registrations</p>'}catch(e){console.error(e)}}
-async function approve(id){await fetch(`/api/admin/companies/$${id}/approve`,{method:'PUT'});loadCompanies()}
-async function reject(id){await fetch(`/api/admin/companies/$${id}/reject`,{method:'PUT'});loadCompanies()}
+async function loadCompanies(){try{const res=await fetch('/api/admin/companies');const data=await res.json();const pending=data.companies.filter(c=>c.status==='pending');const approved=data.companies.filter(c=>c.status==='approved');document.getElementById('pendingRegistrations').innerHTML=pending.length?pending.map(c=>`<div class="company-card"><h3>${c.companyName}</h3><p><strong>Reg #:</strong> ${c.registrationNumber}</p><p><strong>Type:</strong> ${c.businessType}</p><p><strong>Contact:</strong> ${c.contactPerson}</p><p><strong>Email:</strong> ${c.email}</p><button class="approve" onclick="approve('${c.id}')">Approve</button><button class="reject" onclick="reject('${c.id}')">Reject</button></div>`).join(''):'<p>No pending registrations</p>';document.getElementById('approvedRegistrations').innerHTML=approved.length?approved.map(c=>`<div class="company-card"><h3>${c.companyName}</h3><p><strong>Reg #:</strong> ${c.registrationNumber}</p><p><strong>Approved:</strong> ${new Date(c.approvedDate).toLocaleDateString()}</p></div>`).join(''):'<p>No approved registrations</p>'}catch(e){console.error(e)}}
+async function approve(id){await fetch(`/api/admin/companies/${id}/approve`,{method:'PUT'});loadCompanies()}
+async function reject(id){await fetch(`/api/admin/companies/${id}/reject`,{method:'PUT'});loadCompanies()}
 loadCompanies();
 </script></body></html>'''
 
@@ -212,29 +224,3 @@ if __name__ == '__main__':
     with socketserver.TCPServer(("", PORT), AdminHandler) as httpd:
         print(f"Server running on port {PORT}")
         httpd.serve_forever()
-PYTHON
-
-chmod +x app.py
-
-# Create systemd service
-cat > /etc/systemd/system/backend-app.service << 'SERVICE'
-[Unit]
-Description=Backend HTTP Server
-After=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/opt/app
-ExecStart=/usr/bin/python3 /opt/app/app.py
-Restart=always
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-SERVICE
-
-# Enable and start service
-systemctl daemon-reload
-systemctl enable backend-app
-systemctl start backend-app

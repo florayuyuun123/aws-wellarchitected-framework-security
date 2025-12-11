@@ -38,8 +38,8 @@ variable "bastion_security_group" {
   type        = string
 }
 
-variable "rds_endpoint" {
-  description = "RDS endpoint for database connection"
-  type        = string
+
+variable "ecs_cluster_name" {
+  type = string
 }
 

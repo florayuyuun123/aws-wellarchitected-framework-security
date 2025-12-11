@@ -6,10 +6,14 @@ variable "environment" {
   type = string
 }
 
-variable "private_subnet_ids" {
+variable "vpc_id" {
+  type = string
+}
+
+variable "public_subnet_ids" {
   type = list(string)
 }
 
-variable "efs_security_group" {
+variable "alb_security_group" {
   type = string
 }
