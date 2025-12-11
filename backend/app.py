@@ -6,75 +6,7 @@ import urllib.parse
 from datetime import datetime
 import os
 import uuid
-from fpdf import FPDF
 
-# ... imports ...
-
-class CertificatePDF(FPDF):
-    def header(self):
-        self.set_font('Arial', 'B', 15)
-        self.cell(0, 10, 'Company Registration Portal', 0, 1, 'C')
-        self.ln(20)
-
-    def footer(self):
-        self.set_y(-15)
-        self.set_font('Arial', 'I', 8)
-        self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
-
-def generate_certificate(company):
-    pdf = CertificatePDF()
-    pdf.add_page()
-    
-    # Border
-    pdf.set_line_width(1)
-    pdf.rect(5, 5, 200, 287)
-    
-    pdf.set_font('Arial', 'B', 24)
-    pdf.cell(0, 40, 'CERTIFICATE OF REGISTRATION', 0, 1, 'C')
-    
-    pdf.set_font('Arial', '', 14)
-    pdf.ln(20)
-    pdf.cell(0, 10, 'This is to certify that', 0, 1, 'C')
-    
-    pdf.set_font('Arial', 'B', 30)
-    pdf.set_text_color(52, 152, 219)
-    pdf.ln(10)
-    pdf.cell(0, 20, company['companyName'], 0, 1, 'C')
-    
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_font('Arial', '', 14)
-    pdf.ln(20)
-    
-    pdf.cell(95, 10, 'Registration Number:', 0, 0, 'R')
-    pdf.set_font('Arial', 'B', 14)
-    pdf.cell(0, 10, f"  {company['registrationNumber']}", 0, 1, 'L')
-    
-    pdf.set_font('Arial', '', 14)
-    pdf.cell(95, 10, 'Business Type:', 0, 0, 'R')
-    pdf.set_font('Arial', 'B', 14)
-    pdf.cell(0, 10, f"  {company['businessType']}", 0, 1, 'L')
-    
-    pdf.set_font('Arial', '', 14)
-    pdf.cell(95, 10, 'Registration Date:', 0, 0, 'R')
-    pdf.set_font('Arial', 'B', 14)
-    date_str = company['approvedDate'] if company['approvedDate'] else company['submittedDate']
-    try:
-        dt = datetime.fromisoformat(date_str)
-        date_display = dt.strftime('%B %d, %Y')
-    except:
-        date_display = date_str
-    pdf.cell(0, 10, f"  {date_display}", 0, 1, 'L')
-    
-    pdf.ln(30)
-    pdf.set_font('Arial', 'I', 12)
-    pdf.cell(0, 10, 'This certificate confirms that the above business is duly registered', 0, 1, 'C')
-    pdf.cell(0, 10, 'and authorized to operate within the jurisdiction.', 0, 1, 'C')
-    
-    pdf.ln(30)
-    pdf.set_font('Arial', 'B', 12)
-    pdf.cell(0, 10, 'OFFICIAL SEAL', 0, 1, 'C')
-    
-    return pdf.output(dest='S').encode('latin1')
 
 
 DB_HOST = os.environ.get('DB_HOST', 'localhost')
@@ -304,7 +236,7 @@ DASHBOARD_HTML = '''<!DOCTYPE html>
 <h2>Approved Registrations</h2><div id="approvedRegistrations" class="registrations-list">
 <p>Loading...</p></div></div></div>
 <script>
-async function loadCompanies(){try{const res=await fetch('/api/admin/companies');const data=await res.json();const pending=data.companies.filter(c=>c.status==='pending');const approved=data.companies.filter(c=>c.status==='approved');document.getElementById('pendingRegistrations').innerHTML=pending.length?pending.map(c=>`<div class="company-card"><h3>${c.companyName}</h3><p><strong>Reg #:</strong> ${c.registrationNumber}</p><p><strong>Type:</strong> ${c.businessType}</p><p><strong>Contact:</strong> ${c.contactPerson}</p><p><strong>Email:</strong> ${c.email}</p><button class="approve" onclick="approve('${c.id}')">Approve</button><button class="reject" onclick="reject('${c.id}')">Reject</button></div>`).join(''):'<p>No pending registrations</p>';document.getElementById('approvedRegistrations').innerHTML=approved.length?approved.map(c=>`<div class="company-card"><h3>${c.companyName}</h3><p><strong>Reg #:</strong> ${c.registrationNumber}</p><p><strong>Approved:</strong> ${new Date(c.approvedDate).toLocaleDateString()}</p><button onclick="window.open('/api/companies/${c.id}/certificate')">Download Certificate</button></div>`).join(''):'<p>No approved registrations</p>'}catch(e){console.error(e)}}
+async function loadCompanies(){try{const res=await fetch('/api/admin/companies');const data=await res.json();const pending=data.companies.filter(c=>c.status==='pending');const approved=data.companies.filter(c=>c.status==='approved');document.getElementById('pendingRegistrations').innerHTML=pending.length?pending.map(c=>`<div class="company-card"><h3>${c.companyName}</h3><p><strong>Reg #:</strong> ${c.registrationNumber}</p><p><strong>Type:</strong> ${c.businessType}</p><p><strong>Contact:</strong> ${c.contactPerson}</p><p><strong>Email:</strong> ${c.email}</p><button class="approve" onclick="approve('${c.id}')">Approve</button><button class="reject" onclick="reject('${c.id}')">Reject</button></div>`).join(''):'<p>No pending registrations</p>';document.getElementById('approvedRegistrations').innerHTML=approved.length?approved.map(c=>`<div class="company-card"><h3>${c.companyName}</h3><p><strong>Reg #:</strong> ${c.registrationNumber}</p><p><strong>Approved:</strong> ${new Date(c.approvedDate).toLocaleDateString()}</p></div>`).join(''):'<p>No approved registrations</p>'}catch(e){console.error(e)}}
 async function approve(id){await fetch(`/api/admin/companies/${id}/approve`,{method:'PUT'});loadCompanies()}
 async function reject(id){await fetch(`/api/admin/companies/${id}/reject`,{method:'PUT'});loadCompanies()}
 loadCompanies();
