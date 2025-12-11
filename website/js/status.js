@@ -62,8 +62,17 @@ class StatusChecker {
     downloadCertificate() {
         if (!this.currentCompany) return;
 
-        // Open the PDF generation endpoint in a new tab/window which triggers download
-        window.open(`${API_CONFIG.BASE_URL}/api/companies/${this.currentCompany.id}/certificate`, '_blank');
+        const certificate = this.generateCertificate(this.currentCompany);
+        const blob = new Blob([certificate], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Certificate_${this.currentCompany.registrationNumber}.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
     }
 
     generateCertificate(company) {
