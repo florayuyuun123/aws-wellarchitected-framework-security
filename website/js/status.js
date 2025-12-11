@@ -18,30 +18,30 @@ class StatusChecker {
 
     async checkStatus(e) {
         e.preventDefault();
-        
+
         const regNumber = document.getElementById('searchRegNumber').value.trim();
         const resultDiv = document.getElementById('statusResult');
-        
+
         try {
             const response = await fetch(`${API_CONFIG.BASE_URL}/api/companies/${regNumber}`);
-            
+
             if (!response.ok) {
                 alert('Registration not found!');
                 resultDiv.style.display = 'none';
                 return;
             }
-            
+
             const company = await response.json();
-            
+
             // Display company information
             document.getElementById('statusCompanyName').textContent = company.companyName;
             document.getElementById('statusRegNumber').textContent = company.registrationNumber;
             document.getElementById('statusDate').textContent = new Date(company.submittedDate).toLocaleDateString();
-            
+
             const statusSpan = document.getElementById('statusValue');
             statusSpan.textContent = company.status.toUpperCase();
             statusSpan.className = `status-badge status-${company.status}`;
-            
+
             // Show download button if approved
             const downloadDiv = document.getElementById('certificateDownload');
             if (company.status === 'approved') {
@@ -50,7 +50,7 @@ class StatusChecker {
             } else {
                 downloadDiv.style.display = 'none';
             }
-            
+
             resultDiv.style.display = 'block';
         } catch (error) {
             console.error('Error checking status:', error);
@@ -61,18 +61,9 @@ class StatusChecker {
 
     downloadCertificate() {
         if (!this.currentCompany) return;
-        
-        const certificate = this.generateCertificate(this.currentCompany);
-        const blob = new Blob([certificate], { type: 'text/html' });
-        const url = URL.createObjectURL(blob);
-        
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `Certificate_${this.currentCompany.registrationNumber}.html`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+
+        // Open the PDF generation endpoint in a new tab/window which triggers download
+        window.open(`${API_CONFIG.BASE_URL}/api/companies/${this.currentCompany.id}/certificate`, '_blank');
     }
 
     generateCertificate(company) {
