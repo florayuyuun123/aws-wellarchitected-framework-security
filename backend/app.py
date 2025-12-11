@@ -157,6 +157,24 @@ class AdminHandler(http.server.SimpleHTTPRequestHandler):
                 authenticated = session_id in sessions
             self.send_json({'authenticated': authenticated})
         
+        elif '/certificate' in parsed.path:
+            company_id = parsed.path.split('/')[-2]
+            conn = get_db()
+            with conn.cursor() as c:
+                c.execute('SELECT * FROM companies WHERE id=%s', (company_id,))
+                company = c.fetchone()
+            conn.close()
+            
+            if company and company['status'] == 'approved':
+                pdf_content = generate_certificate(company)
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/pdf')
+                self.send_header('Content-Disposition', f'attachment; filename="Certificate_{company["registrationNumber"]}.pdf"')
+                self.end_headers()
+                self.wfile.write(pdf_content)
+            else:
+                self.send_json({'error': 'Certificate not available'}, 404)
+
         elif parsed.path.startswith('/api/companies/'):
             search_term = parsed.path.split('/')[-1]
             conn = get_db()
@@ -177,23 +195,7 @@ class AdminHandler(http.server.SimpleHTTPRequestHandler):
             conn.close()
             self.send_json({'companies': companies})
         
-        elif '/certificate' in parsed.path:
-            company_id = parsed.path.split('/')[-2]
-            conn = get_db()
-            with conn.cursor() as c:
-                c.execute('SELECT * FROM companies WHERE id=%s', (company_id,))
-                company = c.fetchone()
-            conn.close()
-            
-            if company and company['status'] == 'approved':
-                pdf_content = generate_certificate(company)
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/pdf')
-                self.send_header('Content-Disposition', f'attachment; filename="Certificate_{company["registrationNumber"]}.pdf"')
-                self.end_headers()
-                self.wfile.write(pdf_content)
-            else:
-                self.send_json({'error': 'Certificate not available'}, 404)
+
         
         else:
             self.send_json({'error': 'Not found'}, 404)
