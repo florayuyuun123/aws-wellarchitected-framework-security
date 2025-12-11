@@ -82,6 +82,8 @@ resource "aws_ecs_service" "main" {
 
   deployment_minimum_healthy_percent = 50
   deployment_maximum_percent         = 200
+  
+  health_check_grace_period_seconds  = 60
 
   load_balancer {
     target_group_arn = var.target_group_arn

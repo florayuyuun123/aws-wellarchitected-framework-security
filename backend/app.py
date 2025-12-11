@@ -53,8 +53,8 @@ def init_db():
             time.sleep(5)
     print('Failed to initialize database after 30 attempts')
 
-# Run init_db on import/start
-init_db()
+# Run init_db on import/start - MOVED TO THREAD IN MAIN
+# init_db()
 
 class AdminHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
@@ -221,6 +221,13 @@ loadCompanies();
 </script></body></html>'''
 
 if __name__ == '__main__':
+    import threading
+    
+    # Run DB init in background so server starts immediately for health checks
+    db_thread = threading.Thread(target=init_db)
+    db_thread.daemon = True
+    db_thread.start()
+
     with socketserver.TCPServer(("", PORT), AdminHandler) as httpd:
         print(f"Server running on port {PORT}")
         httpd.serve_forever()
