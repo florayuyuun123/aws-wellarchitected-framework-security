@@ -17,7 +17,7 @@ class CompanyRegistry {
 
     async handleRegistration(e) {
         e.preventDefault();
-        
+
         const formData = {
             id: this.generateId(),
             companyName: document.getElementById('companyName').value,
@@ -40,7 +40,7 @@ class CompanyRegistry {
             });
 
             const result = await response.json();
-            
+
             if (result.success) {
                 alert(`Registration submitted successfully! Your reference ID is: ${formData.id}`);
                 document.getElementById('registrationForm').reset();
@@ -48,22 +48,8 @@ class CompanyRegistry {
                 alert(`Error: ${result.error}`);
             }
         } catch (error) {
-            // Fallback to localStorage if API is not available
-            console.warn('API not available, using localStorage fallback');
-            const companies = JSON.parse(localStorage.getItem('companies') || '[]');
-            
-            if (companies.find(c => c.registrationNumber === formData.registrationNumber)) {
-                alert('Registration number already exists!');
-                return;
-            }
-            
-            formData.status = 'pending';
-            formData.approvedDate = null;
-            companies.push(formData);
-            localStorage.setItem('companies', JSON.stringify(companies));
-            
-            alert(`Registration submitted successfully! Your reference ID is: ${formData.id}`);
-            document.getElementById('registrationForm').reset();
+            console.error('Registration error:', error);
+            alert('Registration Failed: Unable to connect to server. Please check your internet connection or try again later.');
         }
     }
 }
