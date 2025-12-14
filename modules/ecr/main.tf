@@ -1,6 +1,7 @@
 resource "aws_ecr_repository" "main" {
   name                 = "${var.project_name}-backend"
   image_tag_mutability = "MUTABLE"
+  force_delete         = true
 
   image_scanning_configuration {
     scan_on_push = true
@@ -9,6 +10,7 @@ resource "aws_ecr_repository" "main" {
   tags = {
     Name = "${var.project_name}-${var.environment}-ecr"
   }
+
 }
 
 resource "aws_ecr_lifecycle_policy" "main" {
@@ -31,3 +33,5 @@ resource "aws_ecr_lifecycle_policy" "main" {
     ]
   })
 }
+
+
