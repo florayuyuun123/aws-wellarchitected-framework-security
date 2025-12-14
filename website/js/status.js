@@ -26,7 +26,8 @@ class StatusChecker {
             const response = await fetch(`${API_CONFIG.BASE_URL}/api/companies/${regNumber}`);
 
             if (!response.ok) {
-                alert('Registration not found!');
+                const errorData = await response.json();
+                alert(`Error: ${errorData.error || 'Registration not found'}`);
                 resultDiv.style.display = 'none';
                 return;
             }
