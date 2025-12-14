@@ -9,6 +9,9 @@ import uuid
 
 
 
+# Configuration
+PORT = int(os.environ.get('PORT', 5000))
+
 DB_HOST = os.environ.get('DB_HOST', 'localhost')
 DB_USER = os.environ.get('DB_USER', 'admin')
 DB_PASS = os.environ.get('DB_PASS', 'changeme123!')
