@@ -61,139 +61,147 @@ def init_db():
 
 class AdminHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
-        parsed = urllib.parse.urlparse(self.path)
-        
-        if parsed.path == '/health':
-            self.send_json({'status': 'healthy'})
-        
-        elif parsed.path == '/admin/login':
-            self.send_html(LOGIN_HTML)
-        
-        elif parsed.path == '/admin/dashboard':
-            cookie = self.headers.get('Cookie', '')
-            if 'session=' in cookie:
-                session_id = cookie.split('session=')[1].split(';')[0]
-                if session_id in sessions:
-                    self.send_html(DASHBOARD_HTML)
-                    return
-            self.send_redirect('/admin/login')
-        
-        elif parsed.path == '/admin/logout':
-            self.send_response(302)
-            self.send_header('Location', '/admin/login')
-            self.send_header('Set-Cookie', 'session=; Max-Age=0')
-            self.end_headers()
-        
-        elif parsed.path == '/admin/check-session':
-            cookie = self.headers.get('Cookie', '')
-            authenticated = False
-            if 'session=' in cookie:
-                session_id = cookie.split('session=')[1].split(';')[0]
-                authenticated = session_id in sessions
-            self.send_json({'authenticated': authenticated})
-        
-        elif '/certificate' in parsed.path:
-            company_id = parsed.path.split('/')[-2]
-            conn = get_db()
-            with conn.cursor() as c:
-                c.execute('SELECT * FROM companies WHERE id=%s', (company_id,))
-                company = c.fetchone()
-            conn.close()
+        try:
+            parsed = urllib.parse.urlparse(self.path)
             
-            if company and company['status'] == 'approved':
-                pdf_content = generate_certificate(company)
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/pdf')
-                self.send_header('Content-Disposition', f'attachment; filename="Certificate_{company["registrationNumber"]}.pdf"')
+            if parsed.path == '/health':
+                self.send_json({'status': 'healthy'})
+            
+            elif parsed.path == '/admin/login':
+                self.send_html(LOGIN_HTML)
+            
+            elif parsed.path == '/admin/dashboard':
+                cookie = self.headers.get('Cookie', '')
+                if 'session=' in cookie:
+                    session_id = cookie.split('session=')[1].split(';')[0]
+                    if session_id in sessions:
+                        self.send_html(DASHBOARD_HTML)
+                        return
+                self.send_redirect('/admin/login')
+            
+            elif parsed.path == '/admin/logout':
+                self.send_response(302)
+                self.send_header('Location', '/admin/login')
+                self.send_header('Set-Cookie', 'session=; Max-Age=0')
                 self.end_headers()
-                self.wfile.write(pdf_content)
-            else:
-                self.send_json({'error': 'Certificate not available'}, 404)
-
-        elif parsed.path.startswith('/api/companies/'):
-            search_term = parsed.path.split('/')[-1]
-            conn = get_db()
-            with conn.cursor() as c:
-                c.execute('SELECT * FROM companies WHERE id=%s OR registrationNumber=%s', (search_term, search_term))
-                company = c.fetchone()
-            conn.close()
-            if company:
-                self.send_json(company)
+            
+            elif parsed.path == '/admin/check-session':
+                cookie = self.headers.get('Cookie', '')
+                authenticated = False
+                if 'session=' in cookie:
+                    session_id = cookie.split('session=')[1].split(';')[0]
+                    authenticated = session_id in sessions
+                self.send_json({'authenticated': authenticated})
+            
+            elif '/certificate' in parsed.path:
+                company_id = parsed.path.split('/')[-2]
+                conn = get_db()
+                with conn.cursor() as c:
+                    c.execute('SELECT * FROM companies WHERE id=%s', (company_id,))
+                    company = c.fetchone()
+                conn.close()
+                
+                if company and company['status'] == 'approved':
+                    pdf_content = generate_certificate(company)
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/pdf')
+                    self.send_header('Content-Disposition', f'attachment; filename="Certificate_{company["registrationNumber"]}.pdf"')
+                    self.end_headers()
+                    self.wfile.write(pdf_content)
+                else:
+                    self.send_json({'error': 'Certificate not available'}, 404)
+    
+            elif parsed.path.startswith('/api/companies/'):
+                search_term = parsed.path.split('/')[-1]
+                conn = get_db()
+                with conn.cursor() as c:
+                    c.execute('SELECT * FROM companies WHERE id=%s OR registrationNumber=%s', (search_term, search_term))
+                    company = c.fetchone()
+                conn.close()
+                if company:
+                    self.send_json(company)
+                else:
+                    self.send_json({'error': 'Not found'}, 404)
+            
+            elif parsed.path == '/api/admin/companies':
+                conn = get_db()
+                with conn.cursor() as c:
+                    c.execute('SELECT * FROM companies')
+                    companies = c.fetchall()
+                conn.close()
+                self.send_json({'companies': companies})
+            
             else:
                 self.send_json({'error': 'Not found'}, 404)
-        
-        elif parsed.path == '/api/admin/companies':
-            conn = get_db()
-            with conn.cursor() as c:
-                c.execute('SELECT * FROM companies')
-                companies = c.fetchall()
-            conn.close()
-            self.send_json({'companies': companies})
-        
-
-        
-        else:
-            self.send_json({'error': 'Not found'}, 404)
+        except Exception as e:
+            print(f"Error in GET {self.path}: {e}")
+            self.send_json({'error': str(e)}, 500)
     
     def do_POST(self):
-        if self.path == '/admin/login':
-            content_length = int(self.headers['Content-Length'])
-            body = self.rfile.read(content_length)
-            data = json.loads(body.decode('utf-8'))
+        try:
+            if self.path == '/admin/login':
+                content_length = int(self.headers['Content-Length'])
+                body = self.rfile.read(content_length)
+                data = json.loads(body.decode('utf-8'))
+                
+                if data.get('username') == 'admin' and data.get('password') == 'admin123':
+                    session_id = str(uuid.uuid4())
+                    sessions[session_id] = {'username': 'admin'}
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.send_header('Set-Cookie', f'session={session_id}; Path=/; HttpOnly')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({'success': True}).encode())
+                else:
+                    self.send_json({'success': False, 'error': 'Invalid credentials'}, 401)
             
-            if data.get('username') == 'admin' and data.get('password') == 'admin123':
-                session_id = str(uuid.uuid4())
-                sessions[session_id] = {'username': 'admin'}
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.send_header('Set-Cookie', f'session={session_id}; Path=/; HttpOnly')
-                self.end_headers()
-                self.wfile.write(json.dumps({'success': True}).encode())
+            elif self.path == '/api/companies':
+                content_length = int(self.headers['Content-Length'])
+                body = self.rfile.read(content_length)
+                company = json.loads(body.decode('utf-8'))
+                conn = get_db()
+                with conn.cursor() as c:
+                    c.execute('''INSERT INTO companies VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
+                             (company['id'], company['companyName'], company['registrationNumber'],
+                              company['businessType'], company['address'], company['contactPerson'],
+                              company['email'], company['phone'], company['submittedDate'],
+                              'pending', None))
+                conn.commit()
+                conn.close()
+                self.send_json({'success': True, 'id': company['id']}, 201)
+            
             else:
-                self.send_json({'success': False, 'error': 'Invalid credentials'}, 401)
-        
-        elif self.path == '/api/companies':
-            content_length = int(self.headers['Content-Length'])
-            body = self.rfile.read(content_length)
-            company = json.loads(body.decode('utf-8'))
-            conn = get_db()
-            with conn.cursor() as c:
-                c.execute('''INSERT INTO companies VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
-                         (company['id'], company['companyName'], company['registrationNumber'],
-                          company['businessType'], company['address'], company['contactPerson'],
-                          company['email'], company['phone'], company['submittedDate'],
-                          'pending', None))
-            conn.commit()
-            conn.close()
-            self.send_json({'success': True, 'id': company['id']}, 201)
-        
-
-
-        else:
-            self.send_json({'error': 'Not found'}, 404)
+                self.send_json({'error': 'Not found'}, 404)
+        except Exception as e:
+            print(f"Error in POST {self.path}: {e}")
+            self.send_json({'error': str(e)}, 500)
     
     def do_PUT(self):
-        if '/approve' in self.path:
-            company_id = self.path.split('/')[-2]
-            conn = get_db()
-            with conn.cursor() as c:
-                c.execute('UPDATE companies SET status=%s, approvedDate=%s WHERE id=%s',
-                         ('approved', datetime.now().isoformat(), company_id))
-            conn.commit()
-            conn.close()
-            self.send_json({'success': True})
-        
-        elif '/reject' in self.path:
-            company_id = self.path.split('/')[-2]
-            conn = get_db()
-            with conn.cursor() as c:
-                c.execute('UPDATE companies SET status=%s WHERE id=%s', ('rejected', company_id))
-            conn.commit()
-            conn.close()
-            self.send_json({'success': True})
-        
-        else:
-            self.send_json({'error': 'Not found'}, 404)
+        try:
+            if '/approve' in self.path:
+                company_id = self.path.split('/')[-2]
+                conn = get_db()
+                with conn.cursor() as c:
+                    c.execute('UPDATE companies SET status=%s, approvedDate=%s WHERE id=%s',
+                             ('approved', datetime.now().isoformat(), company_id))
+                conn.commit()
+                conn.close()
+                self.send_json({'success': True})
+            
+            elif '/reject' in self.path:
+                company_id = self.path.split('/')[-2]
+                conn = get_db()
+                with conn.cursor() as c:
+                    c.execute('UPDATE companies SET status=%s WHERE id=%s', ('rejected', company_id))
+                conn.commit()
+                conn.close()
+                self.send_json({'success': True})
+            
+            else:
+                self.send_json({'error': 'Not found'}, 404)
+        except Exception as e:
+            print(f"Error in PUT {self.path}: {e}")
+            self.send_json({'error': str(e)}, 500)
     
     def do_OPTIONS(self):
         self.send_response(200)
