@@ -33,10 +33,7 @@ variable "ec2_security_group" {
   type        = string
 }
 
-variable "bastion_security_group" {
-  description = "Bastion security group ID"
-  type        = string
-}
+
 
 
 variable "ecs_cluster_name" {

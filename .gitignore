@@ -13,5 +13,5 @@ terraform.tfvars
 .DS_Store
 Thumbs.db
 
-#docs
+# docs
 *.md

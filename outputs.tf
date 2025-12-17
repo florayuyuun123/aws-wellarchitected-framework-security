@@ -13,10 +13,7 @@ output "target_group_arn" {
   value       = module.alb.target_group_arn
 }
 
-output "bastion_public_ip" {
-  description = "Bastion host public IP"
-  value       = module.compute.bastion_public_ip
-}
+
 
 output "rds_endpoint" {
   description = "RDS endpoint"

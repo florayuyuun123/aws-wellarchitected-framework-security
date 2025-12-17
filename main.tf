@@ -78,7 +78,7 @@ module "compute" {
   private_subnet_ids  = module.vpc.private_subnet_ids
   alb_security_group  = module.security.alb_security_group_id
   ec2_security_group  = module.security.ec2_security_group_id
-  bastion_security_group = module.security.bastion_security_group_id
+
   ecs_cluster_name    = module.ecs.cluster_name
   
   depends_on = [module.vpc, module.security, module.database, module.ecs]

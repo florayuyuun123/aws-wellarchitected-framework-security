@@ -147,6 +147,7 @@ resource "aws_vpc_endpoint" "ssm" {
   vpc_endpoint_type   = "Interface"
   subnet_ids          = aws_subnet.private[*].id
   security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  private_dns_enabled = true
   
   depends_on = [aws_security_group.vpc_endpoints]
   
@@ -161,11 +162,27 @@ resource "aws_vpc_endpoint" "ssm_messages" {
   vpc_endpoint_type   = "Interface"
   subnet_ids          = aws_subnet.private[*].id
   security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  private_dns_enabled = true
   
   depends_on = [aws_security_group.vpc_endpoints]
   
   tags = {
     Name = "${var.project_name}-${var.environment}-ssm-messages-endpoint"
+  }
+}
+
+resource "aws_vpc_endpoint" "ec2_messages" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${data.aws_region.current.name}.ec2messages"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  private_dns_enabled = true
+  
+  depends_on = [aws_security_group.vpc_endpoints]
+  
+  tags = {
+    Name = "${var.project_name}-${var.environment}-ec2-messages-endpoint"
   }
 }
 

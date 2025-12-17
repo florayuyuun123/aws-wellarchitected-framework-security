@@ -12,26 +12,7 @@ data "aws_ami" "ecs_optimized" {
 
 data "aws_region" "current" {}
 
-# Ubuntu AMI for Bastion
-data "aws_ami" "ubuntu" {
-  most_recent = true
-  owners      = ["099720109477"] # Canonical
 
-  filter {
-    name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
-  }
-
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
-}
-
-# Use existing key pair
-data "aws_key_pair" "main" {
-  key_name = "argo-key-pair"
-}
 
 # IAM Role for ECS Container Instance
 resource "aws_iam_role" "ecs_instance_role" {
@@ -71,7 +52,7 @@ resource "aws_launch_template" "main" {
   name_prefix   = "${var.project_name}-${var.environment}-ecs-"
   image_id      = data.aws_ami.ecs_optimized.id
   instance_type = "t3.micro"
-  key_name      = data.aws_key_pair.main.key_name
+
 
   vpc_security_group_ids = [var.ec2_security_group]
   
@@ -123,18 +104,3 @@ resource "aws_autoscaling_group" "main" {
   }
 }
 
-# Bastion Host
-resource "aws_instance" "bastion" {
-  ami                    = data.aws_ami.ubuntu.id
-  instance_type          = "t3.micro"
-  key_name               = data.aws_key_pair.main.key_name
-  subnet_id              = var.public_subnet_ids[0]
-  vpc_security_group_ids = [var.bastion_security_group]
-  iam_instance_profile   = aws_iam_instance_profile.ecs_instance_profile.name
-
-  user_data = base64encode(file("${path.module}/../../scripts/setup-bastion.sh"))
-
-  tags = {
-    Name = "${var.project_name}-${var.environment}-bastion"
-  }
-}
