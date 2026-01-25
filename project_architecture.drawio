@@ -1,0 +1,165 @@
+<mxfile>
+  <diagram id="arch-diagram-v4" name="AWS Architecture V4">
+    <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        
+        <!-- AWS Cloud -->
+        <mxCell id="cloud" value="AWS Cloud" style="swimlane;whiteSpace=wrap;html=1;startSize=23;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;dashed=1;" vertex="1" parent="1">
+            <mxGeometry x="40" y="40" width="1000" height="900" as="geometry" />
+        </mxCell>
+
+        <!-- VPC -->
+        <mxCell id="vpc" value="VPC (10.0.0.0/16)" style="swimlane;whiteSpace=wrap;html=1;startSize=23;fillColor=#ffffff;fontColor=#333333;strokeColor=#232F3E;" vertex="1" parent="cloud">
+            <mxGeometry x="40" y="60" width="670" height="580" as="geometry" />
+        </mxCell>
+
+        <!-- Availability Zone 1 -->
+        <mxCell id="az1" value="Availability Zone 1" style="swimlane;whiteSpace=wrap;html=1;startSize=23;fillColor=#f9f9f9;strokeColor=#dcdcdc;dashed=1;" vertex="1" parent="vpc">
+            <mxGeometry x="20" y="40" width="300" height="480" as="geometry" />
+        </mxCell>
+
+        <!-- Availability Zone 2 -->
+        <mxCell id="az2" value="Availability Zone 2" style="swimlane;whiteSpace=wrap;html=1;startSize=23;fillColor=#f9f9f9;strokeColor=#dcdcdc;dashed=1;" vertex="1" parent="vpc">
+            <mxGeometry x="340" y="40" width="300" height="480" as="geometry" />
+        </mxCell>
+
+        <!-- Public Subnets -->
+        <mxCell id="pub_sub1" value="Public Subnet 1" style="swimlane;whiteSpace=wrap;html=1;startSize=23;fillColor=#e6f3ff;strokeColor=#6c8ebf;" vertex="1" parent="az1">
+            <mxGeometry x="10" y="40" width="280" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="pub_sub2" value="Public Subnet 2" style="swimlane;whiteSpace=wrap;html=1;startSize=23;fillColor=#e6f3ff;strokeColor=#6c8ebf;" vertex="1" parent="az2">
+            <mxGeometry x="10" y="40" width="280" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- Single ALB -->
+        <mxCell id="alb_single" value="Application Load Balancer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="vpc">
+            <mxGeometry x="220" y="100" width="220" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Private Subnets -->
+        <mxCell id="priv_sub1" value="Private Subnet 1" style="swimlane;whiteSpace=wrap;html=1;startSize=23;fillColor=#e6ffec;strokeColor=#82b366;" vertex="1" parent="az1">
+            <mxGeometry x="10" y="180" width="280" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="ecs1" value="ECS Cluster (EC2)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="priv_sub1">
+            <mxGeometry x="20" y="40" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="iam1" value="IAM Instance Role" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="priv_sub1">
+            <mxGeometry x="160" y="40" width="100" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="vpce1" value="VPC Interface Endpoints:&#xa;- ECR (API/DKR)&#xa;- SSM / Messages&#xa;- CloudWatch Logs" style="shape=rect;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;dashed=1;align=left;spacingLeft=5;" vertex="1" parent="priv_sub1">
+            <mxGeometry x="20" y="140" width="240" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="priv_sub2" value="Private Subnet 2" style="swimlane;whiteSpace=wrap;html=1;startSize=23;fillColor=#e6ffec;strokeColor=#82b366;" vertex="1" parent="az2">
+            <mxGeometry x="10" y="180" width="280" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="ecs2" value="ECS Cluster (EC2)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="priv_sub2">
+            <mxGeometry x="20" y="40" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="iam2" value="IAM Instance Role" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="priv_sub2">
+            <mxGeometry x="160" y="40" width="100" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="vpce2" value="VPC Interface Endpoints:&#xa;- ECR (API/DKR)&#xa;- SSM / Messages&#xa;- CloudWatch Logs" style="shape=rect;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;dashed=1;align=left;spacingLeft=5;" vertex="1" parent="priv_sub2">
+            <mxGeometry x="20" y="140" width="240" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- S3 Gateway Endpoint -->
+        <mxCell id="s3_gw" value="S3 Gateway Endpoint" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="vpc">
+            <mxGeometry x="280" y="530" width="140" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- RDS -->
+        <mxCell id="rds" value="RDS (Encrypted)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="vpc">
+            <mxGeometry x="300" y="420" width="100" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- External Services -->
+        <mxCell id="users" value="Users" style="shape=actor;whiteSpace=wrap;html=1;" vertex="1" parent="cloud">
+            <mxGeometry x="780" y="250" width="40" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="s3_web" value="S3 Bucket&#xa;(Static Website)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="cloud">
+            <mxGeometry x="850" y="150" width="100" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="waf" value="WAF" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="cloud">
+            <mxGeometry x="760" y="350" width="80" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="cw_logs" value="CloudWatch Logs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="cloud">
+            <mxGeometry x="850" y="450" width="120" height="60" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="ssm" value="Systems Manager&#xa;(Session Manager)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6b8af;strokeColor=#990000;" vertex="1" parent="cloud">
+            <mxGeometry x="850" y="540" width="120" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="kms" value="KMS&#xa;(Encryption)&#xa;(Implicit)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;dashed=1;" vertex="1" parent="cloud">
+            <mxGeometry x="850" y="630" width="120" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="cloudtrail" value="CloudTrail&#xa;(Audit Logs)&#xa;(Planned)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;dashed=1;" vertex="1" parent="cloud">
+            <mxGeometry x="850" y="720" width="120" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="aws_api" value="AWS Global/Regional APIs" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;dashed=1;" vertex="1" parent="cloud">
+            <mxGeometry x="600" y="700" width="200" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- Edges -->
+        <!-- User -> S3 -->
+        <mxCell id="e_user_s3" edge="1" parent="cloud" source="users" target="s3_web">
+            <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- User -> WAF -> ALB -->
+        <mxCell id="e_user_waf" edge="1" parent="cloud" source="users" target="waf">
+            <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_waf_alb" edge="1" parent="cloud" source="waf" target="alb_single">
+            <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ALB -> ECS -->
+        <mxCell id="e_alb_ecs1" edge="1" parent="vpc" source="alb_single" target="ecs1">
+            <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_alb_ecs2" edge="1" parent="vpc" source="alb_single" target="ecs2">
+            <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ECS -> Resources -->
+        <mxCell id="e_ecs_rds" edge="1" parent="vpc" source="ecs1" target="rds">
+            <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_ecs_vpce1" edge="1" parent="priv_sub1" source="ecs1" target="vpce1">
+            <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_ecs_s3gw" edge="1" parent="vpc" source="priv_sub1" target="s3_gw">
+            <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- S3 GW -> S3 Real -->
+        <mxCell id="e_s3gw_s3" edge="1" parent="cloud" source="s3_gw" target="s3_web">
+            <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Endpoints -> Services -->
+        <mxCell id="e_vpce_cw" edge="1" parent="cloud" source="vpce1" target="cw_logs">
+            <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_vpce_ssm" edge="1" parent="cloud" source="vpce1" target="ssm">
+            <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_vpce_api" edge="1" parent="cloud" source="vpce1" target="aws_api">
+            <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_rds_kms" edge="1" parent="cloud" source="rds" target="kms">
+            <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+    </mxGraphModel>
+  </diagram>
+</mxfile>
