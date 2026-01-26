@@ -33,7 +33,7 @@ jobs:
     
     - name: Update Config with ALB DNS
       run: |
-        sed -i "s|ALB_DNS_PLACEHOLDER|http://$ALB_DNS|g" website/js/config.js
+        sed -i "s|BASE_URL: '.*'|BASE_URL: 'http://$ALB_DNS'|g" website/js/config.js
     
     - name: Deploy Website
       run: |
