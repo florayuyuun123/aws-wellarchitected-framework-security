@@ -15,21 +15,20 @@ This project deploys a secure, well-architected AWS infrastructure using Terrafo
 
 ## Security Features
 
-✅ **Network Segmentation**: Public/private subnet isolation across 4 AZs  
-✅ **VPC Endpoints**: Private connectivity to AWS services (S3, EC2, SSM)  
-✅ **Encryption**: RDS and S3 encryption at rest  
-✅ **WAF Protection**: Web application firewall with managed rules and rate limiting  
-✅ **Security Groups**: Least privilege access controls  
-✅ **Bastion Access**: Secure SSH access to private resources  
-✅ **Admin Backend**: Server-side rendered admin dashboard (not on S3)  
-✅ **Session Management**: Sticky sessions with secure cookies  
-✅ **No Internet Access**: Private instances isolated (no NAT gateway)  
+ **Network Segmentation**: Public/private subnet isolation across 4 AZs  
+ **VPC Endpoints**: Private connectivity to AWS services (S3, EC2, SSM)  
+ **Encryption**: RDS and S3 encryption at rest  
+ **WAF Protection**: Web application firewall with managed rules and rate limiting  
+ **Security Groups**: Least privilege access controls  
+ **Bastion Access**: Secure SSH access to private resources  
+ **Admin Backend**: Server-side rendered admin dashboard (not on S3)  
+ **Session Management**: Sticky sessions with secure cookies  
+ **No Internet Access**: Private instances isolated (no NAT gateway)  
 
 ## Prerequisites
 
 1. AWS CLI configured with appropriate permissions
 2. Terraform >= 1.0 installed
-3. SSH key pair generated (`ssh-keygen -t rsa -b 4096`)
 
 ## Deployment Steps
 
