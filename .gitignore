@@ -3,7 +3,7 @@
 *.tfstate.*
 .terraform/
 .terraform.lock.hcl
-.terraform.tfvars
+terraform.tfvars
 
 # IDE
 .vscode/
@@ -14,7 +14,6 @@
 Thumbs.db
 
 # docs
-*.md
-.PROFESSIONAL_MEDIUM_ARTICLE.md
-.LINKEDIN_POST.md
-.COMPREHENSIVE_DOCUMENTATION.md
+PROFESSIONAL_MEDIUM_ARTICLE.md
+LINKEDIN_POST.md
+COMPREHENSIVE_DOCUMENTATION.md
